@@ -1,8 +1,9 @@
 import multiprocessing
-from collections import OrderedDict
-from typing import Sequence
-
+import ctypes
+from collections import OrderedDict, namedtuple
+from typing import Union, Type, Optional, Dict, Any, List, Tuple, Callable, Sequence
 import gym
+from gym.spaces import Box, Discrete
 import numpy as np
 
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, CloudpickleWrapper
@@ -22,14 +23,118 @@ def _worker():
     pass
 
 
+class SharedMemoryGenerator():
+
+    DtypeMap = {
+        np.float64: ctypes.c_double,
+        np.float32: ctypes.c_float,
+        np.int64: ctypes.c_int64,
+        np.int32: ctypes.c_int32,
+        np.uint8: ctypes.c_uint8,
+        np.bool: ctypes.c_bool,
+    }
+
+    EnvInfo = namedtuple("EnvInfo", "obs act")
+    DataInfo = namedtuple("DataInfo", "shape dtype")
+    SharedRollouts = namedtuple("SharedRollouts", "obs, act, reward, done")
+    StepTriple = namedtuple("StateTriple", "obs, reward, done")
+
+    def __init__(self, env_fn, n_env):
+
+        self.n_env = n_env
+        self.env_spaces = self.EnvInfo(env.observation_space, env.action_space)
+
+        if isinstance(env.action_space, Box):
+            act_shape = env.action_space.shape
+            act_dtype = env.action_space.dtype
+        elif isinstance(env.action_space, Discrete):
+            act_shape = (1,)
+            act_dtype = np.int64
+        else:
+            raise ValueError("Action space is unknown")
+
+        self.envinfo = self.EnvInfo(
+            self.DataInfo(
+                env.observation_space.shape,
+                enb.observation_space.dtype
+            ),
+            self.DataInfo(
+                act_shape,
+                act_dtype
+            )
+        )
+
+    def make_shared_mems(self):
+
+        shared_mems = []
+        buffers = []
+        for shape, dtype in (*self.envinfo, ((1,), np.float64), ((1,), np.bool)):
+            shm = multiprocessing.sharedctypes.RawArray(
+                self.DtypeMap[dtype],
+                np.prod(shape) * self.n_env
+            )
+            shared_mems.append(shm)
+            buffers.append(np.frombuffer(shm, dtype=dtype))
+
+        self.buffer = self.SharedRollouts(*buffers)
+        return self.SharedRollouts(*shared_mems)
+
+    def __getitem__(self, nd_indexes: np.ndarray):
+        """ params: nd_indexes: 1D int numpy array of indexes """
+        return self.StepTriple(
+            self.buffer.obs[nd_indexes],
+            self.buffer.reward[nd_indexes],
+            self.buffer.done[nd_indexes]
+        )
+
+    def __setitem__(self, nd_indexes: np.ndarray, nd_items: np.ndarray):
+        """ params: nd_indexes: 1D int numpy array of indexes """
+        """ param: nd_items: Corresponding numpy array of actions"""
+        self.buffer.act[nd_indexes] = nd_items
+
+
+class WorkerBuffer():
+
+    def __init__(self, shared_mems: SharedMemoryGenerator.SharedRollouts):
+        self.buffer = SharedMemoryGenerator.SharedRollouts(*buffers)
+
+    def __getitem__(self, key: int) -> Union[np.ndarray, int]:
+        return self.buffer.act[key]
+
+    def __setitem__(self,
+                    key: int,
+                    item: Sequence[
+                        np.ndarray,
+                        Union[np.ndarray, float],
+                        Union[np.ndarray, int, bool]
+                    ]):
+        self.buffer.obs[key] = item[0]
+        self.buffer.reward[key] = item[1]
+        self.buffer.done[key] = item[2]
+
+
 class AsyncVecEnv(VecEnv):
     """
     """
 
-    def __init__(self, env_fns, start_method=None):
+    def __init__(self, env_fns, start_method=None,
+                 n_env_per_core: int = 1, batchsize: int = None):
         self.waiting = False
         self.closed = False
+        self.n_env_per_core = n_env_per_core
         n_envs = len(env_fns)
+
+        if n_envs % n_env_per_core != 0:
+            raise ValueError("Environments cannot be diveded equally")
+        self.n_procs = n_envs / n_env_per_core
+
+        if batchsize > n_envs:
+            raise NotImplementedError(
+                "Larger than #envs batchsizes are not supported")
+
+        self.batchsize = batchsize
+        if batchsize is None:
+            self.batchsize = n_envs
 
         if start_method is None:
             # Fork is not a thread safe method (see issue #217)
@@ -39,27 +144,47 @@ class AsyncVecEnv(VecEnv):
             start_method = 'forkserver' if forkserver_available else 'spawn'
         ctx = multiprocessing.get_context(start_method)
 
-        self.remotes, self.work_remotes = zip(*[ctx.Pipe() for _ in range(n_envs)])
+        # Shared memories
+        self.memgen = SharedMemoryGenerator(env_fns[0], len(env_fns))
+        shm = self.memgen.make_shared_mems()
+
+        # Job queues
+        self.job_queue = [mp.Queue(n_env_per_core) for i in range(n_procs)]
+        self.ready_queue = mp.Queue(n_procs * n_env_per_core)
+
+        # Queue maps
+        # self.job_proc_map = {
+        #     i: i // n_env_per_core
+        #     for i in range(n_env_per_core * n_procs)
+        # }
+        # self.proc_job_map = {
+        #     i: list(range(i * n_env_per_core, (i + 1) * n_env_per_core))
+        #     for i in range(n_procs)
+        # }
+
         self.processes = []
-        for work_remote, remote, env_fn in zip(self.work_remotes, self.remotes, env_fns):
-            args = (work_remote, remote, CloudpickleWrapper(env_fn))
+        for rank in range(n_procs):
+            args = (
+                ranks,
+                CloudpickleWrapper(env_fn),
+                shm,
+                self.job_queue[rank],
+                self.ready_queue
+            )
             # daemon=True: if the main process crashes, we should not cause things to hang
             process = ctx.Process(target=_worker, args=args, daemon=True)  # pytype:disable=attribute-error
-            pass
             process.start()
             self.processes.append(process)
-            work_remote.close()
 
-        self.remotes[0].send(('get_spaces', None))
-        observation_space, action_space = self.remotes[0].recv()
-        VecEnv.__init__(self, len(env_fns), observation_space, action_space)
+        VecEnv.__init__(self, n_envs, *self.memgen.env_spaces)
 
     def step_async(self, actions):
-        for remote, action in zip(self.remotes, actions):
-            remote.send(('step', action))
+        # MODIFY ACTION SENDING / PUSH INDEX INTO JOB
+        pass
         self.waiting = True
 
     def step_wait(self):
+        # MODIFY STATE RECIEVE / GET INDEX FROM READY
         results = [remote.recv() for remote in self.remotes]
         self.waiting = False
         obs, rews, dones, infos = zip(*results)
@@ -70,11 +195,24 @@ class AsyncVecEnv(VecEnv):
             remote.send(('seed', seed + idx))
         return [remote.recv() for remote in self.remotes]
 
+    # def accumulate_batch(self):
+    #     """ Accumulate batch of transitions in case of large batchsize """
+    #     obs = np.empty((self.batchsize, *self.memgen.envinfo.obs.shape),
+    #                    dtype=self.memgen.envinfo.obs.dtype)
+    #     rewards = np.empty((self.batchsize, 1), dtype=np.float32)
+    #     dones = np.empty((self.batchsize, 1), dtype=np.float32)
+
     def reset(self):
-        for remote in self.remotes:
-            remote.send(('reset', None))
-        obs = [remote.recv() for remote in self.remotes]
-        return _flatten_obs(obs, self.observation_space)
+        for ix in self.num_envs:
+            rank = ix // self.n_env_per_core
+            self.job_queue[rank].push(ix)
+
+        self.waiting = True
+        batch_ix = [ready_queue.get() for i in range(self.batchsize)]
+        self.waiting = False
+
+        return self.memgen[np.array(batch_ix, dtype=np.int64)].obs
+        # return _flatten_obs(obs, self.observation_space)
 
     def close(self):
         if self.closed:
@@ -154,3 +292,7 @@ def _flatten_obs(obs, space):
         return tuple((np.stack([o[i] for o in obs]) for i in range(obs_len)))
     else:
         return np.stack(obs)
+
+
+if __name__ == "__main__":
+    pass
