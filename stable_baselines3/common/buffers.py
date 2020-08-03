@@ -1,9 +1,12 @@
-from typing import Union, Optional, Generator
+import ctypes
+from multiprocessing.sharedctypes import RawArray
+from typing import Union, Optional, Generator, NamedTuple, List
 import warnings
 
 import numpy as np
 import torch as th
 from gym import spaces
+from collections import namedtuple, defaultdict
 
 try:
     # Check memory used by replay buffer when possible
@@ -158,6 +161,7 @@ class ReplayBuffer(BaseBuffer):
         See https://github.com/DLR-RM/stable-baselines3/issues/37#issuecomment-637501195
         and https://github.com/DLR-RM/stable-baselines3/pull/28#issuecomment-637559274
     """
+
     def __init__(self,
                  buffer_size: int,
                  observation_space: spaces.Space,
@@ -333,6 +337,7 @@ class RolloutBuffer(BaseBuffer):
                 next_non_terminal = 1.0 - dones
                 next_value = last_value
             else:
+                # BUG: dones must not be "step+1" as done below
                 next_non_terminal = 1.0 - self.dones[step + 1]
                 next_value = self.values[step + 1]
             delta = self.rewards[step] + self.gamma * next_value * next_non_terminal - self.values[step]
@@ -399,3 +404,186 @@ class RolloutBuffer(BaseBuffer):
                 self.advantages[batch_inds].flatten(),
                 self.returns[batch_inds].flatten())
         return RolloutBufferSamples(*tuple(map(self.to_torch, data)))
+
+
+class AsyncRolloutBuffer(RolloutBuffer):
+    # TODO: backward size is not necessary and the size of the advantage
+    # array can be determined as the later maybe?
+
+    def __init__(self, backwardsize, *args, **kwargs):
+        self.backwardsize = backwardsize
+        super().__init__(*args, **kwargs)
+
+    def reset(self) -> None:
+        self._observations = np.zeros((self.buffer_size, self.n_envs,) + self.obs_shape,
+                                      dtype=np.float32)
+        self._actions = np.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=np.float32)
+        self._rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self._returns = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self._dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self._values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self._log_probs = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        # Advantages are not added in the add method. But the size is not the same
+        self.advantages = np.zeros((self.buffer_size, self.backwardsize), dtype=np.float32)
+        self.generator_ready = False
+
+        self.positions = np.zeros(self.n_envs, dtype=np.int64)
+        self._ready_indx = {ix: False for ix in range(self.buffer_size)}
+
+        super(RolloutBuffer, self).reset()
+
+    def add(self,
+            obs: np.ndarray,
+            action: np.ndarray,
+            reward: np.ndarray,
+            done: np.ndarray,
+            value: th.Tensor,
+            log_prob: th.Tensor,
+            indexes: np.ndarray) -> None:
+        if len(log_prob.shape) == 0:
+            # Reshape 0-d tensor to avoid error
+            log_prob = log_prob.reshape(-1, 1)
+
+        assert any(self._ready_indx[ix] for ix in indexes.flatten()), ""
+
+        positions = self.positions[indexes]
+
+        self._observations[indexes, positions] = np.array(obs)
+        self._actions[indexes, positions] = np.array(action)
+        self._rewards[indexes, positions] = np.array(reward)
+        self._dones[indexes, positions] = np.array(done)
+        self._values[indexes, positions] = value.cpu().numpy().flatten()
+        self._log_probs[indexes, positions] = log_prob.cpu().numpy()
+
+        self.positions[self.indexes] = (positions + 1) % self.buffer_size
+
+        ready_indexes = np.argwhere(positions == 0)
+
+        for ix in ready_indexes:
+            self._ready_indx[ix] = True
+
+    @property
+    def whoisready(self):
+        return [ix for ix, value in self._ready_indx.items() if value]
+
+    def get_ready(self):
+        indxes = [ix for _, (ix, value) in
+                  zip(range(self.backwardsize), self._ready_indx) if value]
+        for ix in indxes:
+            self._ready_indx[ix] = False
+        return indxes
+
+    def fill_ready(self, indexes):
+        self.observations = self._observations[:, indexes]
+        self.actions = self._actions[:, indexes]
+        self.rewards = self._rewards[:, indexes]
+        self.dones = self._dones[:, indexes]
+        self.values = self._values[:, indexes]
+        self.log_probs = self._log_probs[:, indexes]
+
+
+class MultiSharedRolloutBuffer(BaseBuffer):
+
+    """ TODO: Use pytorch tensor for shared memory
+        TODO: Implement "add" with every component required in rolloutBuffer
+        TODO: Include tracker in the buffer for writing heads
+    """
+
+    shared_mem_count = 0
+
+    def __init__(self,
+                 buffer_size: int,
+                 observation_space: spaces.Space,
+                 action_space: spaces.Space,
+                 n_envs: int = 1,
+                 shared_mem=None):
+        super().__init__(1, observation_space, action_space,
+                         n_envs=n_envs)
+        self.buffer_size = buffer_size
+        self.observation_space = observation_space
+        self.action_space = action_space
+        self.n_envs = n_envs
+
+        if shared_mem is None:
+            if SharedRolloutBuffer.shared_mem_count > 0:
+                raise RuntimeError("Shared memory already initialized once")
+
+            SharedRolloutBuffer.shared_mem_count += 1
+            shared_mem = self.reset()
+
+        self.shared_mem = shared_mem
+        self.buffer = self.get_buffer()
+
+    def get_buffer(self):
+        buffer = SharedRolloutStructure(*(
+            np.frombuffer(shm, np.float32).reshape(
+                self.buffer_size, self.n_envs, *shp)
+            for shm, shp in zip(
+                self.shared_mem,
+                [self.obs_shape, (self.action_dim,)] + [(1,)] * 2)
+        ))
+        return buffer
+
+    def reset(self):
+        shared_mem = SharedRolloutStructure(*(
+            RawArray(ctypes.c_float,
+                     self.buffer_size * self.n_envs * np.product(shp).item())
+            for shp in ([self.obs_shape, (self.action_dim,)] + [(1,)] * 2)
+        ))
+        return shared_mem
+
+    def add(self, ):
+        pass
+
+
+class SharedRolloutStructure(NamedTuple):
+    # TODO: Naming: More like SharedStepStructure
+
+    observations: Union[RawArray, np.ndarray]
+    actions: Union[RawArray, np.ndarray]
+    rewards: Union[RawArray, np.ndarray]
+    dones: Union[RawArray, np.ndarray]
+
+
+class SharedRolloutBuffer(BaseBuffer):
+    # TODO: Naming: More like SharedStepBuffer
+
+    shared_mem_count = 0
+
+    def __init__(self,
+                 observation_space: spaces.Space,
+                 action_space: spaces.Space,
+                 n_envs: int = 1,
+                 shared_mem=None):
+        super().__init__(1, observation_space, action_space,
+                         n_envs=n_envs)
+
+        self.observation_space = observation_space
+        self.action_space = action_space
+        self.n_envs = n_envs
+
+        if shared_mem is None:
+            if SharedRolloutBuffer.shared_mem_count > 0:
+                raise RuntimeError("Shared memory already initialized once")
+
+            SharedRolloutBuffer.shared_mem_count += 1
+            shared_mem = self.reset()
+
+        self.shared_mem = shared_mem
+        self.buffer = self.get_buffer()
+
+    def get_buffer(self):
+        buffer = SharedRolloutStructure(*(
+            np.frombuffer(shm, np.float32).reshape(self.n_envs, *shp)
+            for shm, shp in zip(
+                self.shared_mem,
+                [self.obs_shape, (self.action_dim,)] + [(1,)] * 2)
+        ))
+        return buffer
+
+    def reset(self):
+        shared_mem = SharedRolloutStructure(*(
+            RawArray(ctypes.c_float, self.n_envs * np.product(shp).item())
+            for shp in ([self.obs_shape, (self.action_dim,)] + [(1,)] * 2)
+        ))
+        return shared_mem
