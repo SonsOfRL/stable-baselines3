@@ -407,87 +407,36 @@ class RolloutBuffer(BaseBuffer):
 
 
 class AsyncRolloutBuffer(RolloutBuffer):
-    # TODO: backward size is not necessary and the size of the advantage
-    # array can be determined as the later maybe?
-
-    def __init__(self, backwardsize, *args, **kwargs):
-        self.backwardsize = backwardsize
-        super().__init__(*args, **kwargs)
 
     def reset(self) -> None:
-        self._observations = np.zeros((self.buffer_size, self.n_envs,) + self.obs_shape,
-                                      dtype=np.float32)
-        self._actions = np.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=np.float32)
-        self._rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self._returns = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self._dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self._values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self._log_probs = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        # Advantages are not added in the add method. But the size is not the same
-        self.advantages = np.zeros((self.buffer_size, self.backwardsize), dtype=np.float32)
         self.generator_ready = False
-
-        self.positions = np.zeros(self.n_envs, dtype=np.int64)
-        self._ready_indx = {ix: False for ix in range(self.buffer_size)}
-
         super(RolloutBuffer, self).reset()
 
-    def add(self,
-            obs: np.ndarray,
-            action: np.ndarray,
-            reward: np.ndarray,
-            done: np.ndarray,
-            value: th.Tensor,
-            log_prob: th.Tensor,
-            indexes: np.ndarray) -> None:
-        if len(log_prob.shape) == 0:
-            # Reshape 0-d tensor to avoid error
-            log_prob = log_prob.reshape(-1, 1)
+    def add(self, *args, **kwargs) -> None:
+        raise RuntimeError("Method <add> should not be called")
 
-        assert any(self._ready_indx[ix] for ix in indexes.flatten()), ""
+    def fill(self, buffer, indexes):
+        self.observations = buffer.observations[:, indexes]
+        self.actions = buffer.actions[:, indexes]
+        self.rewards = buffer.rewards[:, indexes]
+        self.dones = buffer.dones[:, indexes]
+        self.values = buffer.values[:, indexes]
+        self.log_probs = buffer.logprobs[:, indexes]
+        self.advantages = np.zeros((self.buffer_size, len(indexes)), dtype=np.float32)
 
-        positions = self.positions[indexes]
 
-        self._observations[indexes, positions] = np.array(obs)
-        self._actions[indexes, positions] = np.array(action)
-        self._rewards[indexes, positions] = np.array(reward)
-        self._dones[indexes, positions] = np.array(done)
-        self._values[indexes, positions] = value.cpu().numpy().flatten()
-        self._log_probs[indexes, positions] = log_prob.cpu().numpy()
+class SharedRolloutStructure(NamedTuple):
 
-        self.positions[self.indexes] = (positions + 1) % self.buffer_size
-
-        ready_indexes = np.argwhere(positions == 0)
-
-        for ix in ready_indexes:
-            self._ready_indx[ix] = True
-
-    @property
-    def whoisready(self):
-        return [ix for ix, value in self._ready_indx.items() if value]
-
-    def get_ready(self):
-        indxes = [ix for _, (ix, value) in
-                  zip(range(self.backwardsize), self._ready_indx) if value]
-        for ix in indxes:
-            self._ready_indx[ix] = False
-        return indxes
-
-    def fill_ready(self, indexes):
-        self.observations = self._observations[:, indexes]
-        self.actions = self._actions[:, indexes]
-        self.rewards = self._rewards[:, indexes]
-        self.dones = self._dones[:, indexes]
-        self.values = self._values[:, indexes]
-        self.log_probs = self._log_probs[:, indexes]
+    last_obs: Union[RawArray, np.ndarray]
+    observations: Union[RawArray, np.ndarray]
+    actions: Union[RawArray, np.ndarray]
+    rewards: Union[RawArray, np.ndarray]
+    dones: Union[RawArray, np.ndarray]
+    logprobs: Union[RawArray, np.ndarray]
+    values: Union[RawArray, np.ndarray]
 
 
 class MultiSharedRolloutBuffer(BaseBuffer):
-
-    """ TODO: Use pytorch tensor for shared memory
-        TODO: Implement "add" with every component required in rolloutBuffer
-        TODO: Include tracker in the buffer for writing heads
-    """
 
     shared_mem_count = 0
 
@@ -497,7 +446,7 @@ class MultiSharedRolloutBuffer(BaseBuffer):
                  action_space: spaces.Space,
                  n_envs: int = 1,
                  shared_mem=None):
-        super().__init__(1, observation_space, action_space,
+        super().__init__(buffer_size, observation_space, action_space,
                          n_envs=n_envs)
         self.buffer_size = buffer_size
         self.observation_space = observation_space
@@ -515,34 +464,87 @@ class MultiSharedRolloutBuffer(BaseBuffer):
         self.buffer = self.get_buffer()
 
     def get_buffer(self):
-        buffer = SharedRolloutStructure(*(
-            np.frombuffer(shm, np.float32).reshape(
+        buffer = SharedRolloutStructure(
+            np.frombuffer(self.shared_mem.last_obs, np.float32).reshape(
+                self.n_envs, *self.obs_shape),
+            *(np.frombuffer(shm, np.float32).reshape(
                 self.buffer_size, self.n_envs, *shp)
-            for shm, shp in zip(
-                self.shared_mem,
-                [self.obs_shape, (self.action_dim,)] + [(1,)] * 2)
-        ))
+              for shm, shp in zip(
+                self.shared_mem[1:],
+                [self.obs_shape, (self.action_dim,)] + [(1,)] * 4)
+              )
+        )
         return buffer
 
     def reset(self):
-        shared_mem = SharedRolloutStructure(*(
+        shared_mem = SharedRolloutStructure(
             RawArray(ctypes.c_float,
-                     self.buffer_size * self.n_envs * np.product(shp).item())
-            for shp in ([self.obs_shape, (self.action_dim,)] + [(1,)] * 2)
-        ))
+                     self.n_envs * np.product(self.obs_shape).item()),
+            *(RawArray(ctypes.c_float,
+                       self.buffer_size * self.n_envs * np.product(shp).item())
+              for shp in ([self.obs_shape, (self.action_dim,)] + [(1,)] * 4)
+              )
+        )
+
         return shared_mem
 
-    def add(self, ):
-        pass
+    def add_obs(self,
+                obs: np.ndarray,
+                poses: Union[int, List[int], np.ndarray],
+                indexes: Union[int, List[int], np.ndarray]) -> None:
+        self.buffer.observations[poses, indexes] = obs
 
+    def get_obs(self,
+                poses: Union[int, List[int], np.ndarray],
+                indexes: Union[int, List[int], np.ndarray]) -> np.ndarray:
+        return self.buffer.observations[poses, indexes]
 
-class SharedRolloutStructure(NamedTuple):
-    # TODO: Naming: More like SharedStepStructure
+    def add_last_obs(self,
+                     obs: np.ndarray,
+                     indexes: Union[int, List[int], np.ndarray]) -> None:
+        self.buffer.last_obs[indexes] = obs
 
-    observations: Union[RawArray, np.ndarray]
-    actions: Union[RawArray, np.ndarray]
-    rewards: Union[RawArray, np.ndarray]
-    dones: Union[RawArray, np.ndarray]
+    def get_last_obs(self,
+                     indexes: Union[int, List[int], np.ndarray]) -> None:
+        return self.buffer.last_obs[indexes]
+
+    def assign_first_obs(self,
+                         indexes: np.ndarray) -> None:
+        self.buffer.observations[np.zeros_like(indexes), indexes] = self.buffer.last_obs[indexes]
+
+    def add_act(self,
+                action: np.ndarray,
+                value: th.Tensor,
+                log_prob: th.Tensor,
+                poses: np.ndarray,
+                indexes: np.ndarray) -> None:
+        self.buffer.actions[poses, indexes] = action
+        self.buffer.values[poses, indexes] = value.cpu().numpy()
+
+        if len(log_prob.shape) == 0:
+            # Reshape 0-d tensor to avoid error
+            log_prob = log_prob.reshape(-1, 1)
+
+        self.buffer.logprobs[poses, indexes] = log_prob.cpu().numpy()
+
+    def get_act(self,
+                poses: Union[int, List[int], np.ndarray],
+                indexes: Union[int, List[int], np.ndarray]) -> np.ndarray:
+        return self.buffer.actions[poses, indexes]
+
+    def add_step(self,
+                 next_obs: np.ndarray,
+                 reward: float,
+                 done: float,
+                 pos: int,
+                 index: int) -> None:
+        self.buffer.rewards[pos, index] = reward
+        self.buffer.dones[pos, index] = done
+
+        if pos == (self.buffer_size - 1):
+            self.buffer.last_obs[index] = next_obs
+        else:
+            self.buffer.observations[pos + 1, index] = next_obs
 
 
 class SharedRolloutBuffer(BaseBuffer):

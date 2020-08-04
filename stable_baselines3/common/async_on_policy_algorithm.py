@@ -55,17 +55,25 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
         if self.use_sde:
             self.policy.reset_noise(env.num_envs)
 
+        # Instead of states, _last_obs contain job information about the
+        # lastly updated environments
+        jobtuples = self._last_obs
+        self.vec.sharedbuffer.assign_first_obs(jobtuples.index)
+
+        to_train_indxs = []
+
         callback.on_rollout_start()
 
-        while len(rollout_buffer.whoisready) < self.backwardsize:
+        while len(to_train_indxs) < self.backwardsize:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
                 # Sample a new noise matrix
                 self.policy.reset_noise(env.num_envs)
 
-            obs, jobtuples = self._last_obs
+            obs = self.env.sharedbuffer.get_obs(
+                jobtuples.poses,
+                jobtuples.index,
+            )
             forwardsize = len(jobtuples.indexes)
-            obs = obs.copy()
-
             with th.no_grad():
                 # Convert to pytorch tensor
                 obs_tensor = th.as_tensor(obs).to(self.device)
@@ -75,38 +83,69 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
             # Rescale and perform action
             clipped_actions = actions
             # Clip the actions to avoid out of bound error
-            if isinstance(self.action_space, gym.spaces.Box):
-                clipped_actions = np.clip(actions, self.action_space.low, self.action_space.high)
-
-            new_obs, rewards, dones, jobtuples = env.step(clipped_actions, jobtuples)
-
-            if callback.on_step() is False:
-                return False
-
-            self._update_info_buffer({})
-            self.num_timesteps += forwardsize
-
             if isinstance(self.action_space, gym.spaces.Discrete):
                 # Reshape in case of discrete action
                 actions = actions.reshape(-1, 1)
-            rollout_buffer.add(obs, actions, rewards, dones, values, log_probs, jobtuples.indexes)
-            self._last_obs = new_obs, jobtuples
+            if isinstance(self.action_space, gym.spaces.Box):
+                clipped_actions = np.clip(actions,
+                                          self.action_space.low,
+                                          self.action_space.high)
+            self.env.sharedbuffer.add_act(actions,
+                                           values,
+                                           log_probs,
+                                           jobtuples.poses,
+                                           jobtuples.indexs
+                                           )
+            # Create new jobs whose actions are ready
+            jobtuples = JobTuple(jobtuples.index,
+                                 jobtuples.poses,
+                                 ["step"] * forwardsize
+                                 )
+            self.env.push_jobs(jobtuples)
 
-        indexes = rollout_buffer.get_ready()
+            # Pull new jobs to forward process
+            jobs = []
+            while len(jobs) < forwardsize:
+                job = self.env.pull_ready_jobs()
+                if job.poses == (self.env.sharedbuffer.buffer_size):
+                    to_train_indxs.append(job.index)
+                    # If we are ready to update stop rollout and push pulled
+                    # jobs back to the queue
+                    if len(to_train_indxs) == self.backwardsize:
+                        self.env.push_jobs(JobTuple(*list(zip(jobs))))
+                        break
+                else:
+                    jobs.append(job)
+            jobtuples = JobTuple(*list(zip(jobs)))
+
+            if callback.on_step() is False:
+                return False
+            self.num_timesteps += forwardsize
+
+        # Fill _last_obs with to_train_indxs so that at the next rollout we
+        # can start from there
+        self._last_obs = JobTuple(
+            to_train_indxs,
+            [0] * len(to_train_indxs),
+            ["act"] * len(to_train_indxs)
+        )
+
+        # Calculate next_values
         with th.no_grad():
-            # Convert to pytorch tensor
-            obs = rollout_buffer.observations[:, indexes]
+            obs = self.env.sharedbuffer.get_last_obs(list(to_train_indxs))
             obs_tensor = th.as_tensor(obs).to(self.device)
             actions, values, log_probs = self.policy.forward(obs_tensor)
-        dones = rollout_buffer.dones[-1, indexes]
-        rollout_buffer.fill_ready(indexes)
+        # The line below is a consequence of uncorrected bug
+        dones = self.env.sharedbuffer.buffer.dones[-1, to_train_indxs]
 
+        # We are ready to fill the rollout_buffer with shared_memory buffer
+        rollout_buffer.fill(self.env.sharedbuffer.buffer, to_train_indxs)
         rollout_buffer.compute_returns_and_advantage(values, dones=dones)
 
         callback.on_rollout_end()
-
-        
         return True
+
+    # <--------------------------------- TODO ---------------------------------
 
     def train(self) -> None:
         """
@@ -114,8 +153,6 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
         Implemented by individual algorithms.
         """
         raise NotImplementedError
-
-    # <--------------------------------- TODO ---------------------------------
 
     def learn(self,
               total_timesteps: int,

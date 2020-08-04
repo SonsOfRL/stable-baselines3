@@ -9,10 +9,18 @@ import time
 
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, CloudpickleWrapper
 from stable_baselines3.common.buffers import SharedRolloutBuffer
+from stable_baselines3.common.buffers import MultiSharedRolloutBuffer
 from stable_baselines3.common.preprocessing import get_action_dim, get_obs_shape
 
 
-def worker():
+def worker(rank,
+           env_fns,
+           shm,
+           job_queue,
+           ready_queue,
+           buffer_size,
+           n_envs,
+           n_env_per_core):
     """ Environment running function. Run multiple environment each with an
     associated index. Worker communicate with the master process via two
     queues namely, ready queue and job queue. When an index arrives into job
@@ -27,7 +35,49 @@ def worker():
     use three tuple that includes rank, index and the job information to
     communicate between the master process.
     """
-    pass
+
+    timer = Timer()
+    envs = [env_fn() for env_fn in env_fns.var]
+    shared_buffer = MultiSharedRolloutBuffer(
+        buffer_size,
+        envs[0].observation_space,
+        envs[0].action_space,
+        n_envs,
+        shm
+    )
+    active_envs = len(envs)
+
+    while active_envs > 0:
+        timer.waiting = True
+        jobtuple = job_queue.get()
+        timer.waiting = False
+
+        ix = jobtuple.index % n_env_per_core
+        if jobtuple.info == "reset":
+            state = envs[ix].reset()
+            shared_buffer.add_last_obs(state, jobtuple.index)
+            shared_buffer.add_obs(state, 0, jobtuple.index)
+            ready_queue.put(JobTuple(
+                jobtuple.index, 0, "act"))
+
+        elif jobtuple.info == "step":
+            act = shared_buffer.get_act(jobtuple.poses, jobtuple.index)
+            if np.product(act.shape) == 1:
+                act = act.astype(envs[ix].action_space.dtype)
+                act = act.item()
+
+            new_obs, reward, done, _ = envs[ix].step(act)
+            shared_buffer.add_step(new_obs, float(reward), float(done),
+                                   jobtuple.poses, jobtuple.index)
+            ready_queue.put(JobTuple(
+                jobtuple.index, jobtuple.poses + 1, "act"))
+
+        elif jobtuple.info == "close":
+            envs[ix].close()
+            envs[ix] = None
+            active_envs -= 1
+            ready_queue.put(JobTuple(
+                jobtuple.index, None, "closed"))
 
 
 class Timer():
@@ -60,16 +110,19 @@ class Timer():
 
 class JobTuple(NamedTuple):
     index: Union[int, List[int], np.ndarray]
-    info: Union[str, None]
+    poses: Union[int, List[int], np.ndarray, None]
+    info: Union[str, List[str], None]
 
 
 class AsyncVecEnv(VecEnv):
     """
     """
 
-    def __init__(self, env_fns, start_method=None,
+    def __init__(self, env_fns,
+                 buffer_size: int,
+                 start_method=None,
                  n_env_per_core: int = 1,
-                 forwardsize: int = None):
+                 forwardsize: int = None,):
         n_envs = len(env_fns)
         self.timer = Timer()
         self.timer.waiting = False
@@ -78,7 +131,7 @@ class AsyncVecEnv(VecEnv):
         self.worker_count = 0
 
         if n_envs % n_env_per_core != 0:
-            raise ValueError("Environments cannot be diveded equally")
+            raise ValueError("Environments cannot be equally partitioned")
         self.n_procs = n_envs // n_env_per_core
 
         self.forwardsize = forwardsize
@@ -104,7 +157,8 @@ class AsyncVecEnv(VecEnv):
         del env
 
         # Shared memories
-        self.sharedbuffer = SharedRolloutBuffer(
+        self.sharedbuffer = MultiSharedRolloutBuffer(
+            buffer_size,
             observation_space=obs_space,
             action_space=act_space,
             n_envs=len(env_fns)
@@ -113,7 +167,7 @@ class AsyncVecEnv(VecEnv):
 
         # Job queues
         self.job_queue = [mp.Queue(n_env_per_core) for i in range(self.n_procs)]
-        self.ready_queue = mp.Queue(self.n_procs * n_env_per_core)
+        self.ready_queue = mp.Queue(n_envs)
 
         self.processes = []
         for rank in range(self.n_procs):
@@ -127,12 +181,15 @@ class AsyncVecEnv(VecEnv):
                 ),
                 shm,
                 self.job_queue[rank],
-                self.ready_queue
+                self.ready_queue,
+                buffer_size,
+                n_envs,
+                self.n_env_per_core
             )
             # daemon=True: if the main process crashes, we should not cause
             # things to hang
             process = mp.Process(
-                target=_worker,
+                target=worker,
                 args=args,
                 daemon=True)  # pytype:disable=attribute-error
             process.start()
@@ -140,43 +197,26 @@ class AsyncVecEnv(VecEnv):
 
         super().__init__(n_envs, obs_space, act_space)
 
-    def step(self, actions, jobtuple: JobTuple):
+    def step(self, *args, **kwargs):
         """
-        Step the environments with the given action
-
-        :param actions: ([int] or [float]) the action
-        :param jobtuple: job indexes of the given actions
-        :return: ([int] or [float], [float], [bool], dict) observation, reward, done, information
         """
-        self.sharedbuffer.buffer[jobtuple.index] = actions
-        self.push_jobs(JobTuple(jobtuple.index, ["step"] * len(jobtuple.index)))
-
-        self.timer.waiting = True
-        indexes, infos = self.pull_ready_jobs(self.forwardsize)
-        self.timer.waiting = False
-
-        return (self.sharedbuffer.buffer.observations[indexes],
-                self.sharedbuffer.buffer.rewards[indexes],
-                self.sharedbuffer.buffer.dones[indexes],
-                JobTuple(indexes, infos))
+        raise RuntimeError("step method should not be called")
 
     def seed(self, seed=None):
         for idx, remote in enumerate(self.remotes):
             remote.send(('seed', seed + idx))
         return [remote.recv() for remote in self.remotes]
 
-    def push_jobs(self, jobtuple: JobTuple):
-        for ix, info in zip(jobtuple.index, jobtuple.info):
+    def push_jobs(self, jobtuples: JobTuple):
+        for ix, pos, info in zip(*jobtuples):
             rank = ix // self.n_env_per_core
-            self.job_queue[rank].push(JobTuple(ix, info))
-        self.worker_count += len(jobtuple.index)
+            self.job_queue[rank].put(JobTuple(ix, pos, info))
+        self.worker_count += len(jobtuples.index)
 
-    def pull_ready_jobs(self, size: int):
-        """ Gather the jobTuples from the ready workers and distribute them to
-        indexes and infos (job descriptions) """
-        indexes, infos = list(zip(ready_queue.get() for i in range(size)))
-        self.worker_count -= size
-        return indexes, infos
+    def pull_ready_jobs(self) -> JobTuple:
+        """ Gather the jobTuple(s) from the ready workers """
+        self.worker_count -= 1
+        return self.ready_queue.get()
 
     def reset(self):
         """
@@ -189,26 +229,30 @@ class AsyncVecEnv(VecEnv):
         self.push_jobs(
             JobTuple(
                 list(range(self.num_envs)),
+                [None] * self.num_envs,
                 ["reset"] * self.num_envs
             )
         )
         self.timer.waiting = True
-        indexes, infos = self.pull_ready_jobs(self.forwardsize)
+        jobs = JobTuple(*zip(
+            *(self.pull_ready_jobs() for _ in range(self.forwardsize)))
+        )
         self.timer.waiting = False
 
-        return (self.sharedbuffer.buffer.observations[indexes],
-                JobTuple(indexes, infos))
+        return jobs
 
     def close(self):
         if self.closed:
             return
         # Wait for all workers to finish their last job
-        self.pull_ready_jobs(self.worker_count)
+        for _ in range(self.worker_count):
+            self.pull_ready_jobs()
 
         # Send closing messages to workers
         self.push_jobs(
             JobTuple(
                 list(range(self.num_envs)),
+                [None] * self.num_envs,
                 ["close"] * self.num_envs
             )
         )
@@ -225,10 +269,10 @@ class AsyncVecEnv(VecEnv):
         raise NotImplementedError
 
     def step_async(self):
-        raise NotImplementedError("Step is implmented")
+        raise NotImplementedError("Step is not implemented")
 
     def step_wait(self):
-        raise NotImplementedError("Step is implmented")
+        raise NotImplementedError("Step is not implemented")
 
     # <--------------------------------- TODO ---------------------------------
 
