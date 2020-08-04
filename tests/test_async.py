@@ -7,7 +7,6 @@ import gym
 import time
 
 from stable_baselines3.common.buffers import MultiSharedRolloutBuffer
-from stable_baselines3.common.buffers import AsyncRolloutBuffer
 from stable_baselines3.common.buffers import SharedRolloutStructure
 from stable_baselines3.common.vec_env.async_vec_env import AsyncVecEnv
 from stable_baselines3.common.vec_env.async_vec_env import JobTuple
@@ -57,11 +56,11 @@ def test_async_env():
 
     N_ENVS = 12
     BUFFER_SIZE = 5
-    FORWARD_SIZE = 6
+    BATCH_SIZE = 6
 
     env_fns = [lambda: gym.make("LunarLander-v2") for i in range(N_ENVS)]
     env = AsyncVecEnv(env_fns, n_env_per_core=3,
-                      buffer_size=BUFFER_SIZE, forwardsize=FORWARD_SIZE)
+                      buffer_size=BUFFER_SIZE, batchsize=BATCH_SIZE)
 
     jobs = env.reset()
     states = env.sharedbuffer.buffer.observations
@@ -81,9 +80,47 @@ def test_async_env():
 
     env.close()
 
+
 def test_async_on_policy():
 
+    N_ENVS = 12
+    BUFFER_SIZE = 5
+    BATCH_SIZE = 6
+
+    env_fns = [lambda: gym.make("LunarLander-v2") for i in range(N_ENVS)]
+    env = AsyncVecEnv(env_fns, n_env_per_core=3,
+                      buffer_size=BUFFER_SIZE, batchsize=BATCH_SIZE)
+
+    model = AsyncOnPolicyAlgorithm(
+        "MlpPolicy",
+        env,
+        learning_rate=7e-4,
+        n_steps=5,
+        gamma=0.99,
+        gae_lambda=1.0,
+        ent_coef=0.0,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        use_sde=False,
+        sde_sample_freq=-1,
+        tensorboard_log=None,
+        create_eval_env=False,
+        policy_kwargs=None,
+        verbose=0,
+        seed=None,
+        device='auto',
+        _init_setup_model=True)
+
+    total_timesteps, callback = model._setup_learn(10000, None, None, -1,
+                                                   5, None, True,
+                                                   "AsyncOnPolicy")
+
+    model.collect_rollouts(model.env, callback,
+                           model.rollout_buffer, model.n_steps)
+
+    print(env.sharedbuffer.buffer.values[:, :, 0])
+    print(model.rollout_buffer.values)
 
 
 if __name__ == "__main__":
-    test_async_env()
+    test_async_on_policy()

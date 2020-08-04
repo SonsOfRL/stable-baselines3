@@ -406,25 +406,6 @@ class RolloutBuffer(BaseBuffer):
         return RolloutBufferSamples(*tuple(map(self.to_torch, data)))
 
 
-class AsyncRolloutBuffer(RolloutBuffer):
-
-    def reset(self) -> None:
-        self.generator_ready = False
-        super(RolloutBuffer, self).reset()
-
-    def add(self, *args, **kwargs) -> None:
-        raise RuntimeError("Method <add> should not be called")
-
-    def fill(self, buffer, indexes):
-        self.observations = buffer.observations[:, indexes]
-        self.actions = buffer.actions[:, indexes]
-        self.rewards = buffer.rewards[:, indexes]
-        self.dones = buffer.dones[:, indexes]
-        self.values = buffer.values[:, indexes]
-        self.log_probs = buffer.logprobs[:, indexes]
-        self.advantages = np.zeros((self.buffer_size, len(indexes)), dtype=np.float32)
-
-
 class SharedRolloutStructure(NamedTuple):
 
     last_obs: Union[RawArray, np.ndarray]
@@ -509,8 +490,8 @@ class MultiSharedRolloutBuffer(BaseBuffer):
         return self.buffer.last_obs[indexes]
 
     def assign_first_obs(self,
-                         indexes: np.ndarray) -> None:
-        self.buffer.observations[np.zeros_like(indexes), indexes] = self.buffer.last_obs[indexes]
+                         indexes: Union[int, List[int], np.ndarray]) -> None:
+        self.buffer.observations[[0] * len(indexes), indexes] = self.buffer.last_obs[indexes]
 
     def add_act(self,
                 action: np.ndarray,
@@ -545,6 +526,18 @@ class MultiSharedRolloutBuffer(BaseBuffer):
             self.buffer.last_obs[index] = next_obs
         else:
             self.buffer.observations[pos + 1, index] = next_obs
+
+    def fill(self, rolloutbuffer, indexes):
+
+        rolloutbuffer.observations = self.buffer.observations[:, indexes]
+        rolloutbuffer.actions = self.buffer.actions[:, indexes]
+        rolloutbuffer.rewards = self.buffer.rewards[:, indexes, 0]
+        rolloutbuffer.dones = self.buffer.dones[:, indexes, 0]
+        rolloutbuffer.values = self.buffer.values[:, indexes, 0]
+        rolloutbuffer.log_probs = self.buffer.logprobs[:, indexes, 0]
+        rolloutbuffer.advantages = np.zeros((self.buffer_size, len(indexes)),
+                                            dtype=np.float32)
+        rolloutbuffer.n_envs = len(indexes)
 
 
 class SharedRolloutBuffer(BaseBuffer):

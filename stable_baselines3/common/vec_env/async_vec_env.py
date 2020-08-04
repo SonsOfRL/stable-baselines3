@@ -122,7 +122,7 @@ class AsyncVecEnv(VecEnv):
                  buffer_size: int,
                  start_method=None,
                  n_env_per_core: int = 1,
-                 forwardsize: int = None,):
+                 batchsize: int = None):
         n_envs = len(env_fns)
         self.timer = Timer()
         self.timer.waiting = False
@@ -134,11 +134,11 @@ class AsyncVecEnv(VecEnv):
             raise ValueError("Environments cannot be equally partitioned")
         self.n_procs = n_envs // n_env_per_core
 
-        self.forwardsize = forwardsize
-        if forwardsize is None:
-            self.forwardsize = n_envs
+        self.batchsize = batchsize
+        if batchsize is None:
+            self.batchsize = n_envs
 
-        if self.forwardsize > n_envs:
+        if self.batchsize > n_envs:
             raise NotImplementedError(
                 "Larger than #envs forwardsizes are not supported")
 
@@ -235,7 +235,7 @@ class AsyncVecEnv(VecEnv):
         )
         self.timer.waiting = True
         jobs = JobTuple(*zip(
-            *(self.pull_ready_jobs() for _ in range(self.forwardsize)))
+            *(self.pull_ready_jobs() for _ in range(self.batchsize)))
         )
         self.timer.waiting = False
 

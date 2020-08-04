@@ -7,38 +7,16 @@ import numpy as np
 from collections import defaultdict
 
 from stable_baselines3.common import logger
-from stable_baselines3.common.utils import safe_mean
-from stable_baselines3.common.base_class import BaseAlgorithm
-from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.vec_env import VecEnv
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.vec_env.async_vec_env import JobTuple
+from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 
 
 class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
     """
     """
-
-    def __init__(self, forwardsize, backwardsize, *args, **kwargs):
-
-        self.backwardsize = backwardsize
-        self.forwardsize = forwardsize
-        super().__init__(*args, **kwargs)
-
-    def _setup_model(self) -> None:
-        self._setup_lr_schedule()
-        self.set_random_seed(self.seed)
-
-        self.rollout_buffer = RolloutBuffer(self.n_steps, self.observation_space,
-                                            self.action_space, self.device,
-                                            gamma=self.gamma, gae_lambda=self.gae_lambda,
-                                            n_envs=self.n_envs)
-        self.policy = self.policy_class(self.observation_space, self.action_space,
-                                        self.lr_schedule, use_sde=self.use_sde, device=self.device,
-                                        **self.policy_kwargs)  # pytype:disable=not-instantiable
-        self.policy = self.policy.to(self.device)
 
     # ---------------------------------- TODO -------------------------------->
 
@@ -58,13 +36,14 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
         # Instead of states, _last_obs contain job information about the
         # lastly updated environments
         jobtuples = self._last_obs
-        self.vec.sharedbuffer.assign_first_obs(jobtuples.index)
+        batchsize = len(jobtuples.index)
+        self.env.sharedbuffer.assign_first_obs(list(jobtuples.index))
 
         to_train_indxs = []
 
         callback.on_rollout_start()
 
-        while len(to_train_indxs) < self.backwardsize:
+        while len(to_train_indxs) < batchsize:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
                 # Sample a new noise matrix
                 self.policy.reset_noise(env.num_envs)
@@ -73,11 +52,15 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
                 jobtuples.poses,
                 jobtuples.index,
             )
-            forwardsize = len(jobtuples.indexes)
             with th.no_grad():
                 # Convert to pytorch tensor
                 obs_tensor = th.as_tensor(obs).to(self.device)
                 actions, values, log_probs = self.policy.forward(obs_tensor)
+
+            if len(log_probs.shape) <= 1:
+                # Reshape 0-d and 1-d tensors to avoid error
+                log_probs = log_probs.reshape(-1, 1)
+
             actions = actions.cpu().numpy()
 
             # Rescale and perform action
@@ -91,36 +74,39 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
                                           self.action_space.low,
                                           self.action_space.high)
             self.env.sharedbuffer.add_act(actions,
-                                           values,
-                                           log_probs,
-                                           jobtuples.poses,
-                                           jobtuples.indexs
-                                           )
+                                          values,
+                                          log_probs,
+                                          jobtuples.poses,
+                                          jobtuples.index
+                                          )
             # Create new jobs whose actions are ready
             jobtuples = JobTuple(jobtuples.index,
                                  jobtuples.poses,
-                                 ["step"] * forwardsize
+                                 ["step"] * batchsize
                                  )
             self.env.push_jobs(jobtuples)
 
             # Pull new jobs to forward process
             jobs = []
-            while len(jobs) < forwardsize:
+            while len(jobs) < batchsize:
                 job = self.env.pull_ready_jobs()
                 if job.poses == (self.env.sharedbuffer.buffer_size):
                     to_train_indxs.append(job.index)
                     # If we are ready to update stop rollout and push pulled
                     # jobs back to the queue
-                    if len(to_train_indxs) == self.backwardsize:
-                        self.env.push_jobs(JobTuple(*list(zip(jobs))))
+                    if len(to_train_indxs) == batchsize:
+                        if len(jobs) > 0:
+                            self.env.push_jobs(JobTuple(*zip(*jobs)))
+                            print(len(jobs), "hey")
                         break
                 else:
                     jobs.append(job)
-            jobtuples = JobTuple(*list(zip(jobs)))
+            else:
+                jobtuples = JobTuple(*zip(*jobs))
 
             if callback.on_step() is False:
                 return False
-            self.num_timesteps += forwardsize
+            self.num_timesteps += batchsize
 
         # Fill _last_obs with to_train_indxs so that at the next rollout we
         # can start from there
@@ -134,81 +120,13 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
         with th.no_grad():
             obs = self.env.sharedbuffer.get_last_obs(list(to_train_indxs))
             obs_tensor = th.as_tensor(obs).to(self.device)
-            actions, values, log_probs = self.policy.forward(obs_tensor)
+            _, last_val, _ = self.policy.forward(obs_tensor)
         # The line below is a consequence of uncorrected bug
-        dones = self.env.sharedbuffer.buffer.dones[-1, to_train_indxs]
+        dones = self.env.sharedbuffer.buffer.dones[-1, to_train_indxs].flatten()
 
         # We are ready to fill the rollout_buffer with shared_memory buffer
-        rollout_buffer.fill(self.env.sharedbuffer.buffer, to_train_indxs)
-        rollout_buffer.compute_returns_and_advantage(values, dones=dones)
+        self.env.sharedbuffer.fill(rollout_buffer, to_train_indxs)
+        rollout_buffer.compute_returns_and_advantage(last_val, dones=dones)
 
         callback.on_rollout_end()
         return True
-
-    # <--------------------------------- TODO ---------------------------------
-
-    def train(self) -> None:
-        """
-        Consume current rollout data and update policy parameters.
-        Implemented by individual algorithms.
-        """
-        raise NotImplementedError
-
-    def learn(self,
-              total_timesteps: int,
-              callback: MaybeCallback = None,
-              log_interval: int = 1,
-              eval_env: Optional[GymEnv] = None,
-              eval_freq: int = -1,
-              n_eval_episodes: int = 5,
-              tb_log_name: str = "OnPolicyAlgorithm",
-              eval_log_path: Optional[str] = None,
-              reset_num_timesteps: bool = True) -> 'OnPolicyAlgorithm':
-        iteration = 0
-
-        total_timesteps, callback = self._setup_learn(total_timesteps, eval_env, callback, eval_freq,
-                                                      n_eval_episodes, eval_log_path, reset_num_timesteps,
-                                                      tb_log_name)
-
-        callback.on_training_start(locals(), globals())
-
-        while self.num_timesteps < total_timesteps:
-
-            continue_training = self.collect_rollouts(self.env, callback,
-                                                      self.rollout_buffer,
-                                                      n_rollout_steps=self.n_steps)
-
-            if continue_training is False:
-                break
-
-            iteration += 1
-            self._update_current_progress_remaining(self.num_timesteps, total_timesteps)
-
-            # Display training infos
-            if log_interval is not None and iteration % log_interval == 0:
-                fps = int(self.num_timesteps / (time.time() - self.start_time))
-                logger.record("time/iterations", iteration, exclude="tensorboard")
-                if len(self.ep_info_buffer) > 0 and len(self.ep_info_buffer[0]) > 0:
-                    logger.record("rollout/ep_rew_mean",
-                                  safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer]))
-                    logger.record("rollout/ep_len_mean",
-                                  safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer]))
-                logger.record("time/fps", fps)
-                logger.record("time/time_elapsed", int(time.time() - self.start_time), exclude="tensorboard")
-                logger.record("time/total_timesteps", self.num_timesteps, exclude="tensorboard")
-                logger.dump(step=self.num_timesteps)
-
-            self.train()
-
-        callback.on_training_end()
-
-        return self
-
-    def get_torch_variables(self) -> Tuple[List[str], List[str]]:
-        """
-        cf base class
-        """
-        state_dicts = ["policy", "policy.optimizer"]
-
-        return state_dicts, []
-    # ---------------------------------- TODO -------------------------------->
