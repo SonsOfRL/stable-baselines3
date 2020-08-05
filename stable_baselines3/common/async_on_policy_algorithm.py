@@ -18,8 +18,6 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
     """
     """
 
-    # ---------------------------------- TODO -------------------------------->
-
     def collect_rollouts(self,
                          env: VecEnv,
                          callback: BaseCallback,
@@ -96,17 +94,16 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
                     # jobs back to the queue
                     if len(to_train_indxs) == batchsize:
                         if len(jobs) > 0:
-                            self.env.push_jobs(JobTuple(*zip(*jobs)))
-                            print(len(jobs), "hey")
+                            self.env.re_push_ready_jobs(JobTuple(*zip(*jobs)))
                         break
                 else:
                     jobs.append(job)
             else:
                 jobtuples = JobTuple(*zip(*jobs))
+                self.num_timesteps += batchsize
 
             if callback.on_step() is False:
                 return False
-            self.num_timesteps += batchsize
 
         # Fill _last_obs with to_train_indxs so that at the next rollout we
         # can start from there

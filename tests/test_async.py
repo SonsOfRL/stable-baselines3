@@ -83,12 +83,13 @@ def test_async_env():
 
 def test_async_on_policy():
 
-    N_ENVS = 12
+    N_ENVS = 6
     BUFFER_SIZE = 5
     BATCH_SIZE = 6
+    N_ENV_PER_CORE = 1
 
     env_fns = [lambda: gym.make("LunarLander-v2") for i in range(N_ENVS)]
-    env = AsyncVecEnv(env_fns, n_env_per_core=3,
+    env = AsyncVecEnv(env_fns, n_env_per_core=N_ENV_PER_CORE,
                       buffer_size=BUFFER_SIZE, batchsize=BATCH_SIZE)
 
     model = AsyncOnPolicyAlgorithm(
@@ -118,8 +119,8 @@ def test_async_on_policy():
     model.collect_rollouts(model.env, callback,
                            model.rollout_buffer, model.n_steps)
 
-    print(env.sharedbuffer.buffer.values[:, :, 0])
-    print(model.rollout_buffer.values)
+    print(env.sharedbuffer.buffer.rewards[4, :, 0])
+    # print(model.rollout_buffer.values)
 
 
 if __name__ == "__main__":

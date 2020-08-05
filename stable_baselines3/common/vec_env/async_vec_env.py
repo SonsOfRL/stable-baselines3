@@ -67,6 +67,9 @@ def worker(rank,
                 act = act.item()
 
             new_obs, reward, done, _ = envs[ix].step(act)
+            if done:
+                new_obs = env.reset()
+
             shared_buffer.add_step(new_obs, float(reward), float(done),
                                    jobtuple.poses, jobtuple.index)
             ready_queue.put(JobTuple(
@@ -217,6 +220,10 @@ class AsyncVecEnv(VecEnv):
         """ Gather the jobTuple(s) from the ready workers """
         self.worker_count -= 1
         return self.ready_queue.get()
+
+    def re_push_ready_jobs(self, jobs: JobTuple):
+        for job in jobs:
+            self.ready_queue.put(job)
 
     def reset(self):
         """
