@@ -94,7 +94,7 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
                     # jobs back to the queue
                     if len(to_train_indxs) == batchsize:
                         if len(jobs) > 0:
-                            self.env.re_push_ready_jobs(JobTuple(*zip(*jobs)))
+                            self.env.re_push_ready_jobs(jobs)
                         break
                 else:
                     jobs.append(job)
@@ -113,16 +113,16 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
             ["act"] * len(to_train_indxs)
         )
 
+        # We are ready to fill the rollout_buffer with shared_memory buffer
+        last_obs = self.env.fill(rollout_buffer, to_train_indxs)
+
         # Calculate next_values
         with th.no_grad():
-            obs = self.env.sharedbuffer.get_last_obs(list(to_train_indxs))
-            obs_tensor = th.as_tensor(obs).to(self.device)
+            obs_tensor = th.as_tensor(last_obs).to(self.device)
             _, last_val, _ = self.policy.forward(obs_tensor)
         # The line below is a consequence of uncorrected bug
         dones = self.env.sharedbuffer.buffer.dones[-1, to_train_indxs].flatten()
 
-        # We are ready to fill the rollout_buffer with shared_memory buffer
-        self.env.sharedbuffer.fill(rollout_buffer, to_train_indxs)
         rollout_buffer.compute_returns_and_advantage(last_val, dones=dones)
 
         callback.on_rollout_end()

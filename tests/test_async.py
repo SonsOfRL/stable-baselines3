@@ -11,6 +11,7 @@ from stable_baselines3.common.buffers import SharedRolloutStructure
 from stable_baselines3.common.vec_env.async_vec_env import AsyncVecEnv
 from stable_baselines3.common.vec_env.async_vec_env import JobTuple
 from stable_baselines3.common.async_on_policy_algorithm import AsyncOnPolicyAlgorithm
+from stable_baselines3.common.cmd_util import make_atari_env
 
 
 def test_shared_buffer():
@@ -119,9 +120,31 @@ def test_async_on_policy():
     model.collect_rollouts(model.env, callback,
                            model.rollout_buffer, model.n_steps)
 
-    print(env.sharedbuffer.buffer.rewards[4, :, 0])
+    print(env.sharedbuffer.buffer.actions[:, :, 0])
     # print(model.rollout_buffer.values)
 
 
+def test_make_async_atari_env():
+
+    N_ENVS = 6
+    BUFFER_SIZE = 5
+    BATCH_SIZE = 6
+    N_ENV_PER_CORE = 1
+
+    env = make_atari_env('PongNoFrameskip-v4', n_envs=N_ENVS, seed=0,
+                         vec_env_cls=AsyncVecEnv,
+                         wrapper_kwargs={
+                             "frame_stack": 4,
+                             "transpose": True
+                         },
+                         vec_env_kwargs={
+                             "batchsize": BATCH_SIZE,
+                             "buffer_size": BUFFER_SIZE,
+                             "n_env_per_core": N_ENV_PER_CORE
+                         })
+    
+    env.
+
+
 if __name__ == "__main__":
-    test_async_on_policy()
+    test_make_async_atari_env()

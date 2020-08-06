@@ -8,7 +8,6 @@ import numpy as np
 import time
 
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, CloudpickleWrapper
-from stable_baselines3.common.buffers import SharedRolloutBuffer
 from stable_baselines3.common.buffers import MultiSharedRolloutBuffer
 from stable_baselines3.common.preprocessing import get_action_dim, get_obs_shape
 
@@ -68,7 +67,7 @@ def worker(rank,
 
             new_obs, reward, done, _ = envs[ix].step(act)
             if done:
-                new_obs = env.reset()
+                new_obs = envs[ix].reset()
 
             shared_buffer.add_step(new_obs, float(reward), float(done),
                                    jobtuple.poses, jobtuple.index)
@@ -268,6 +267,22 @@ class AsyncVecEnv(VecEnv):
         for process in self.processes:
             process.join()
         self.closed = True
+
+    def fill(self, rolloutbuffer, indexes):
+
+        rolloutbuffer.observations = self.sharedbuffer.buffer.observations[:, indexes]
+        rolloutbuffer.actions = self.sharedbuffer.buffer.actions[:, indexes]
+        rolloutbuffer.rewards = self.sharedbuffer.buffer.rewards[:, indexes, 0]
+        rolloutbuffer.dones = self.sharedbuffer.buffer.dones[:, indexes, 0]
+        rolloutbuffer.values = self.sharedbuffer.buffer.values[:, indexes, 0]
+        rolloutbuffer.log_probs = self.sharedbuffer.buffer.logprobs[:, indexes, 0]
+        rolloutbuffer.advantages = np.zeros((self.sharedbuffer.buffer_size, len(indexes)),
+                                            dtype=np.float32)
+        rolloutbuffer.n_envs = len(indexes)
+
+        last_obs = self.sharedbuffer.buffer.last_obs[list(indexes)]
+        rolloutbuffer.full = True
+        return last_obs
 
     def get_attr(self, attr_name, indices=None):
         raise NotImplementedError

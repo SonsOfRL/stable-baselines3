@@ -195,6 +195,65 @@ class WarpFrame(gym.ObservationWrapper):
         return frame[:, :, None]
 
 
+class FrameStack(gym.Wrapper):
+    def __init__(self, env, n_stack):
+        """Stack n_stack last frames"""
+        super().__init__(env)
+        self.n_stack = n_stack
+        wrapped_obs_space = env.observation_space
+        low = np.repeat(wrapped_obs_space.low, self.n_stack, axis=-1)
+        high = np.repeat(wrapped_obs_space.high, self.n_stack, axis=-1)
+        self.stackedobs = np.zeros(low.shape, env.observation_space.dtype)
+        observation_space = spaces.Box(low=low, high=high,
+                                       dtype=wrapped_obs_space.dtype)
+        self.most_recent_done = False
+        self.observation_space = observation_space
+
+    def reset(self):
+        """
+        Reset all environments
+        """
+        obs = self.env.reset()
+        self.stackedobs[...] = 0
+        self.stackedobs[..., -obs.shape[-1]:] = obs
+        return self.stackedobs
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        last_ax_size = obs.shape[-1]
+        if self.most_recent_done:
+            self.stackedobs[...] = 0
+        else:
+            self.stackedobs = np.roll(self.stackedobs, shift=-last_ax_size, axis=-1)
+        self.stackedobs[..., -obs.shape[-1]:] = obs
+        self.most_recent_done = done
+
+        return self.stackedobs, reward, done, info
+
+
+class TransposeChannel(gym.ObservationWrapper):
+
+    def __init__(self, env: gym.Env):
+        gym.ObservationWrapper.__init__(self, env)
+        obspace = env.observation_space
+        low = np.transpose(obspace.low,
+                           np.roll(np.arange(len(obspace.low.shape)), shift=1))
+        high = np.transpose(obspace.high,
+                            np.roll(np.arange(len(obspace.high.shape)), shift=1))
+        observation_space = spaces.Box(low=low, high=high,
+                                       dtype=obspace.dtype)
+        self.observation_space = observation_space
+
+    def observation(self, obs: np.ndarray) -> np.ndarray:
+        """
+        returns the channel transposed observation
+
+        :param obs: (np.ndarray) environment observation
+        :return: (np.ndarray) the observation
+        """
+        return np.transpose(obs, np.roll(np.arange(len(obs.shape)), shift=1))
+
+
 class AtariWrapper(gym.Wrapper):
     """
     Atari 2600 preprocessings
@@ -217,12 +276,15 @@ class AtariWrapper(gym.Wrapper):
             life is lost.
     :param clip_reward: (bool) If True (default), the reward is clip to {-1, 0, 1} depending on its sign.
     """
+
     def __init__(self, env: gym.Env,
                  noop_max: int = 30,
                  frame_skip: int = 4,
                  screen_size: int = 84,
                  terminal_on_life_loss: bool = True,
-                 clip_reward: bool = True):
+                 clip_reward: bool = True,
+                 frame_stack: int = None,
+                 transpose: bool = False):
         env = NoopResetEnv(env, noop_max=noop_max)
         env = MaxAndSkipEnv(env, skip=frame_skip)
         if terminal_on_life_loss:
@@ -232,5 +294,9 @@ class AtariWrapper(gym.Wrapper):
         env = WarpFrame(env, width=screen_size, height=screen_size)
         if clip_reward:
             env = ClipRewardEnv(env)
+        if frame_stack:
+            env = FrameStack(env, frame_stack)
+        if transpose:
+            env = TransposeChannel(env)
 
         super(AtariWrapper, self).__init__(env)

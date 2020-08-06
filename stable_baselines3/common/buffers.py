@@ -417,6 +417,36 @@ class SharedRolloutStructure(NamedTuple):
     values: Union[RawArray, np.ndarray]
 
 
+class SafeBuffer():
+
+    queue = None
+
+    def __init__(self, buffer: RawArray, dtype):
+        self.buffer = np.frombuffer(buffer, dtype)
+        self.info = None
+
+    @staticmethod
+    def set_queue(queue):
+        SafeBuffer.queue = queue
+
+    def set_info(self, rank, name):
+        self.info = {"rank": rank, "name": name}
+
+    def reshape(self, *args):
+        self.buffer = self.buffer.reshape(*args)
+        return self
+
+    @property
+    def shape(self):
+        return self.buffer.shape
+
+    def __getitem__(self, key):
+        return self.buffer[key]
+
+    def __setitem__(self, key, value):
+        self.buffer[key] = value
+
+
 class MultiSharedRolloutBuffer(BaseBuffer):
 
     shared_mem_count = 0
@@ -435,20 +465,24 @@ class MultiSharedRolloutBuffer(BaseBuffer):
         self.n_envs = n_envs
 
         if shared_mem is None:
-            if SharedRolloutBuffer.shared_mem_count > 0:
+            if MultiSharedRolloutBuffer.shared_mem_count > 0:
                 raise RuntimeError("Shared memory already initialized once")
 
-            SharedRolloutBuffer.shared_mem_count += 1
+            MultiSharedRolloutBuffer.shared_mem_count += 1
             shared_mem = self.reset()
 
         self.shared_mem = shared_mem
         self.buffer = self.get_buffer()
 
+        for name, buf in self.buffer._asdict().items():
+            if isinstance(buf, SafeBuffer):
+                buf.set_info(0, name)
+
     def get_buffer(self):
         buffer = SharedRolloutStructure(
-            np.frombuffer(self.shared_mem.last_obs, np.float32).reshape(
+            SafeBuffer(self.shared_mem.last_obs, np.float32).reshape(
                 self.n_envs, *self.obs_shape),
-            *(np.frombuffer(shm, np.float32).reshape(
+            *(SafeBuffer(shm, np.float32).reshape(
                 self.buffer_size, self.n_envs, *shp)
               for shm, shp in zip(
                 self.shared_mem[1:],
@@ -526,59 +560,3 @@ class MultiSharedRolloutBuffer(BaseBuffer):
             self.buffer.last_obs[index] = next_obs
         else:
             self.buffer.observations[pos + 1, index] = next_obs
-
-    def fill(self, rolloutbuffer, indexes):
-
-        rolloutbuffer.observations = self.buffer.observations[:, indexes]
-        rolloutbuffer.actions = self.buffer.actions[:, indexes]
-        rolloutbuffer.rewards = self.buffer.rewards[:, indexes, 0]
-        rolloutbuffer.dones = self.buffer.dones[:, indexes, 0]
-        rolloutbuffer.values = self.buffer.values[:, indexes, 0]
-        rolloutbuffer.log_probs = self.buffer.logprobs[:, indexes, 0]
-        rolloutbuffer.advantages = np.zeros((self.buffer_size, len(indexes)),
-                                            dtype=np.float32)
-        rolloutbuffer.n_envs = len(indexes)
-
-
-class SharedRolloutBuffer(BaseBuffer):
-    # TODO: Naming: More like SharedStepBuffer
-
-    shared_mem_count = 0
-
-    def __init__(self,
-                 observation_space: spaces.Space,
-                 action_space: spaces.Space,
-                 n_envs: int = 1,
-                 shared_mem=None):
-        super().__init__(1, observation_space, action_space,
-                         n_envs=n_envs)
-
-        self.observation_space = observation_space
-        self.action_space = action_space
-        self.n_envs = n_envs
-
-        if shared_mem is None:
-            if SharedRolloutBuffer.shared_mem_count > 0:
-                raise RuntimeError("Shared memory already initialized once")
-
-            SharedRolloutBuffer.shared_mem_count += 1
-            shared_mem = self.reset()
-
-        self.shared_mem = shared_mem
-        self.buffer = self.get_buffer()
-
-    def get_buffer(self):
-        buffer = SharedRolloutStructure(*(
-            np.frombuffer(shm, np.float32).reshape(self.n_envs, *shp)
-            for shm, shp in zip(
-                self.shared_mem,
-                [self.obs_shape, (self.action_dim,)] + [(1,)] * 2)
-        ))
-        return buffer
-
-    def reset(self):
-        shared_mem = SharedRolloutStructure(*(
-            RawArray(ctypes.c_float, self.n_envs * np.product(shp).item())
-            for shp in ([self.obs_shape, (self.action_dim,)] + [(1,)] * 2)
-        ))
-        return shared_mem

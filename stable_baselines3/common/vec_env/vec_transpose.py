@@ -60,3 +60,14 @@ class VecTransposeImage(VecEnvWrapper):
 
     def close(self) -> None:
         self.venv.close()
+
+
+class DummyTranspose(VecTransposeImage):
+
+    @staticmethod
+    def transpose_space(observation_space: spaces.Box) -> spaces.Box:
+        return observation_space
+
+    @staticmethod
+    def transpose_image(image: np.ndarray) -> np.ndarray:
+        return image
