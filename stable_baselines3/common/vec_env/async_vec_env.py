@@ -80,6 +80,7 @@ def worker(rank,
             active_envs -= 1
             ready_queue.put(JobTuple(
                 jobtuple.index, None, "closed"))
+    print("Waiting:", timer.wait_time, ", rank:", rank)
 
 
 class Timer():
@@ -218,7 +219,10 @@ class AsyncVecEnv(VecEnv):
     def pull_ready_jobs(self) -> JobTuple:
         """ Gather the jobTuple(s) from the ready workers """
         self.worker_count -= 1
-        return self.ready_queue.get()
+        self.timer.waiting = True
+        job = self.ready_queue.get()
+        self.timer.waiting = False
+        return job
 
     def re_push_ready_jobs(self, jobs: JobTuple):
         for job in jobs:
@@ -251,10 +255,11 @@ class AsyncVecEnv(VecEnv):
         if self.closed:
             return
         # Wait for all workers to finish their last job
-        for _ in range(self.worker_count):
+        while self.ready_queue.qsize() > 0:
             self.pull_ready_jobs()
 
         # Send closing messages to workers
+        print("closing")
         self.push_jobs(
             JobTuple(
                 list(range(self.num_envs)),
@@ -267,6 +272,7 @@ class AsyncVecEnv(VecEnv):
         for process in self.processes:
             process.join()
         self.closed = True
+        print("Waiting:", self.timer.wait_time, ", rank:", "main")
 
     def fill(self, rolloutbuffer, indexes):
 

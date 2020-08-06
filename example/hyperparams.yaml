@@ -1,0 +1,133 @@
+atari:
+  - Pong:
+      envname: PongNoFrameskip-v4
+      env:
+        n_envs: 32
+        vec_env_kwargs:
+          batchsize: 16
+          buffer_size: 5
+          n_env_per_core: 2
+        wrapper_kwargs:
+          frame_stack: 4
+          transpose: true
+      agent:
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 100
+
+  - BeamRider:
+      envname: BeamRiderNoFrameskip-v4
+      env:
+        n_envs: 32
+        vec_env_kwargs:
+          batchsize: 16
+          buffer_size: 5
+          n_env_per_core: 2
+        wrapper_kwargs:
+          frame_stack: 4
+          transpose: true
+      agent:
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 100
+
+  - Breakout:
+      envname: BreakoutNoFrameskip-v4
+      env:
+        n_envs: 32
+        vec_env_kwargs:
+          batchsize: 16
+          buffer_size: 5
+          n_env_per_core: 2
+        wrapper_kwargs:
+          frame_stack: 4
+          transpose: true
+      agent:
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 100
+        
+  - Enduro:
+      envname: EnduroNoFrameskip-v4
+      env:
+        n_envs: 32
+        vec_env_kwargs:
+          batchsize: 16
+          buffer_size: 5
+          n_env_per_core: 2
+        wrapper_kwargs:
+          frame_stack: 4
+          transpose: true
+      agent:
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 100
+
+  - Qbert:
+      envname: QbertNoFrameskip-v4
+      env:
+        n_envs: 32
+        vec_env_kwargs:
+          batchsize: 16
+          buffer_size: 5
+          n_env_per_core: 2
+        wrapper_kwargs:
+          frame_stack: 4
+          transpose: true
+      agent:
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 100
+        
+  - Seaquest:
+      envname: SeaquestNoFrameskip-v4
+      env:
+        n_envs: 32
+        vec_env_kwargs:
+          batchsize: 16
+          buffer_size: 5
+          n_env_per_core: 2
+        wrapper_kwargs:
+          frame_stack: 4
+          transpose: true
+      agent:
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 100
+  
+  - SpaceInvaders:
+      envname: SpaceInvadersNoFrameskip-v4
+      env:
+        n_envs: 32
+        vec_env_kwargs:
+          batchsize: 16
+          buffer_size: 5
+          n_env_per_core: 2
+        wrapper_kwargs:
+          frame_stack: 4
+          transpose: true
+      agent:
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 100

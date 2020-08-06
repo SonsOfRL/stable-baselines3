@@ -7,9 +7,9 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 if __name__ == "__main__":
 
     # There already exists an environment generator that will make and wrap atari environments correctly.
-    env = make_atari_env('PongNoFrameskip-v4', n_envs=4, seed=0, vec_env_cls=SubprocVecEnv)
+    env = make_atari_env('PongNoFrameskip-v4', n_envs=16, seed=0, vec_env_cls=SubprocVecEnv)
     # Stack 4 frames
-    env = VecFrameStack(env, n_stack=4)
+    env = VecFrameStack(env, n_stack=1)
 
-    model = A2C('CnnPolicy', env, verbose=0)
-    model.learn(total_timesteps=10000)
+    model = A2C('CnnPolicy', env, verbose=1)
+    model.learn(total_timesteps=100000)
