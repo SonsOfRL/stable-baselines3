@@ -1,0 +1,380 @@
+atari:
+  - Pong:
+      envname: PongNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'dirac'
+  
+  - Pong:
+      envname: PongNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'orthogonal'
+  
+  - Pong:
+      envname: PongNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'MlpPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'xavier_normal'
+
+  - Pong:
+      envname: PongNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'MlpPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'xavier_uniform'
+    
+  - Pong:
+      envname: PongNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'sparse'
+
+  - Pong:
+      envname: PongNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'kaiming_uniform'
+
+  - Pong:
+      envname: PongNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'kaiming_normal'
+
+  - SpaceInvaders:
+      envname: SpaceInvadersNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'dirac'
+  
+  - SpaceInvaders:
+      envname: SpaceInvadersNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'orthogonal'
+  
+  - SpaceInvaders:
+      envname: SpaceInvadersNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'MlpPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'xavier_normal'
+
+  - SpaceInvaders:
+      envname: SpaceInvadersNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'MlpPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'xavier_uniform'
+    
+  - SpaceInvaders:
+      envname: SpaceInvadersNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'sparse'
+
+  - SpaceInvaders:
+      envname: SpaceInvadersNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'kaiming_uniform'
+
+  - SpaceInvaders:
+      envname: SpaceInvadersNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'kaiming_normal'
+
+  - Breakout:
+      envname: BreakoutNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'dirac'
+  
+  - Breakout:
+      envname: BreakoutNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'orthogonal'
+  
+  - Breakout:
+      envname: BreakoutNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'MlpPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'xavier_normal'
+
+  - Breakout:
+      envname: BreakoutNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'MlpPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'xavier_uniform'
+    
+  - Breakout:
+      envname: BreakoutNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'sparse'
+
+  - Breakout:
+      envname: BreakoutNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'kaiming_uniform'
+
+  - Breakout:
+      envname: BreakoutNoFrameskip-v4
+      env:
+        seed: 457
+        n_envs: 16
+      framestack:
+        n_stack: 4
+      agent:
+        seed: 1457
+        policy: 'CnnPolicy'
+        ent_coef: 0.01
+        vf_coef: 0.25
+      learn:
+        total_timesteps: !!float 1e7
+        log_interval: 5000
+      net_arch: [32, 32]
+      inits: 'kaiming_normal'
+  
+  
