@@ -12,7 +12,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 
 def read_hypers():
-    with open(f"experiment1-1.yaml", "r") as f:
+    with open(f"experiment1-2.yaml", "r") as f:
         hyperparams_dict = yaml.safe_load(f)
         return hyperparams_dict["atari"]
 
