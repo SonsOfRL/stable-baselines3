@@ -8,7 +8,7 @@ from pysc2.lib import actions, features
 import numpy as np
 import gym.spaces as spaces
 
-from base_env import SC2Env
+from examples.StarCraft2.envs.base_env import SC2Env
 
 
 _PLAYER_RELATIVE = features.SCREEN_FEATURES.player_relative.index
