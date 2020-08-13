@@ -52,34 +52,35 @@ def worker(rank,
         timer.waiting = False
 
         ix = jobtuple.index % n_env_per_core
-        if jobtuple.info == "reset":
+        if jobtuple.info["job"] == "reset":
             state = envs[ix].reset()
             shared_buffer.add_last_obs(state, jobtuple.index)
             shared_buffer.add_obs(state, 0, jobtuple.index)
             ready_queue.put(JobTuple(
-                jobtuple.index, 0, "act"))
+                jobtuple.index, 0, {"job": "act"}))
 
-        elif jobtuple.info == "step":
+        elif jobtuple.info["job"] == "step":
             act = shared_buffer.get_act(jobtuple.poses, jobtuple.index)
             if np.product(act.shape) == 1:
                 act = act.astype(envs[ix].action_space.dtype)
                 act = act.item()
 
-            new_obs, reward, done, _ = envs[ix].step(act)
+            new_obs, reward, done, info = envs[ix].step(act)
             if done:
                 new_obs = envs[ix].reset()
 
             shared_buffer.add_step(new_obs, float(reward), float(done),
                                    jobtuple.poses, jobtuple.index)
+            info["job"] = "act"
             ready_queue.put(JobTuple(
-                jobtuple.index, jobtuple.poses + 1, "act"))
+                jobtuple.index, jobtuple.poses + 1, info))
 
-        elif jobtuple.info == "close":
+        elif jobtuple.info["job"] == "close":
             envs[ix].close()
             envs[ix] = None
             active_envs -= 1
             ready_queue.put(JobTuple(
-                jobtuple.index, None, "closed"))
+                jobtuple.index, None, {"job": "closed"}))
     print("Waiting:", timer.wait_time, ", rank:", rank)
 
 
@@ -240,7 +241,7 @@ class AsyncVecEnv(VecEnv):
             JobTuple(
                 list(range(self.num_envs)),
                 [None] * self.num_envs,
-                ["reset"] * self.num_envs
+                [{"job": "reset"} for _ in range(self.num_envs)],
             )
         )
         self.timer.waiting = True
@@ -264,13 +265,14 @@ class AsyncVecEnv(VecEnv):
             JobTuple(
                 list(range(self.num_envs)),
                 [None] * self.num_envs,
-                ["close"] * self.num_envs
+                [{"job": "close"} for _ in range(self.num_envs)],
             )
         )
 
         # Join processes
         for process in self.processes:
             process.join()
+        self.sharedbuffer.close()
         self.closed = True
         print("Waiting:", self.timer.wait_time, ", rank:", "main")
 
@@ -302,35 +304,18 @@ class AsyncVecEnv(VecEnv):
     def step_wait(self):
         raise NotImplementedError("Step is not implemented")
 
-    # <--------------------------------- TODO ---------------------------------
-
     def get_images(self) -> Sequence[np.ndarray]:
-        for pipe in self.remotes:
-            # gather images from subprocesses
-            # `mode` will be taken into account later
-            pipe.send(('render', 'rgb_array'))
-        imgs = [pipe.recv() for pipe in self.remotes]
-        return imgs
+        raise NotImplementedError
 
     def env_method(self, method_name, *method_args, indices=None, **method_kwargs):
-        """Call instance methods of vectorized environments."""
-        target_remotes = self._get_target_remotes(indices)
-        for remote in target_remotes:
-            remote.send(('env_method', (method_name, method_args, method_kwargs)))
-        return [remote.recv() for remote in target_remotes]
+        """
+        """
+        raise NotImplementedError
 
     def _get_target_remotes(self, indices):
         """
-        Get the connection object needed to communicate with the wanted
-        envs that are in subprocesses.
-
-        :param indices: (None,int,Iterable) refers to indices of envs.
-        :return: ([multiprocessing.Connection]) Connection object to communicate between processes.
         """
-        indices = self._get_indices(indices)
-        return [self.remotes[i] for i in indices]
-
-    # ---------------------------------- TODO -------------------------------->
+        raise NotImplementedError
 
 
 def _flatten_obs(obs, space):

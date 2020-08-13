@@ -9,7 +9,7 @@ if __name__ == "__main__":
 
     BUFFER_SIZE = 5
     BATCH_SIZE = 16
-    N_ENV_PER_CORE = 2
+    N_ENV_PER_CORE = 3
     N_ENVS = 16 * N_ENV_PER_CORE
     FRAME_STACK = 4
 

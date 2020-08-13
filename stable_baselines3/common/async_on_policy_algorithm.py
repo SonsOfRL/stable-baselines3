@@ -37,11 +37,11 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
         batchsize = len(jobtuples.index)
         self.env.sharedbuffer.assign_first_obs(list(jobtuples.index))
 
-        to_train_indxs = []
+        to_train_jobs = []
 
         callback.on_rollout_start()
 
-        while len(to_train_indxs) < 16:
+        while len(to_train_jobs) < 16:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
                 # Sample a new noise matrix
                 self.policy.reset_noise(env.num_envs)
@@ -50,6 +50,8 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
                 jobtuples.poses,
                 jobtuples.index,
             )
+
+            self._update_info_buffer(jobtuples.info)
             self.num_timesteps += len(jobtuples.index)
 
             with th.no_grad():
@@ -80,10 +82,11 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
                                           jobtuples.index
                                           )
             # Create new jobs whose actions are ready
-            jobtuples = JobTuple(jobtuples.index,
-                                 jobtuples.poses,
-                                 ["step"] * batchsize
-                                 )
+            jobtuples = JobTuple(
+                jobtuples.index,
+                jobtuples.poses,
+                [{"job": "step"} for _ in range(batchsize)],
+            )
             self.env.push_jobs(jobtuples)
 
             # Pull new jobs to forward process
@@ -91,10 +94,10 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
             while len(jobs) < batchsize:
                 job = self.env.pull_ready_jobs()
                 if job.poses == (self.env.sharedbuffer.buffer_size):
-                    to_train_indxs.append(job.index)
-                    # If we are ready to update stop rollout and push pulled
+                    to_train_jobs.append(job)
+                    # If we are ready to update, stop rollout and push pulled
                     # jobs back to the queue
-                    if len(to_train_indxs) == 16:
+                    if len(to_train_jobs) == 16:
                         if len(jobs) > 0:
                             self.env.re_push_ready_jobs(jobs)
                         break
@@ -106,25 +109,25 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
             if callback.on_step() is False:
                 return False
 
-        # Fill _last_obs with to_train_indxs so that at the next rollout we
+        # Fill _last_obs with to_train_jobs so that at the next rollout we
         # can start from there
+        
         self._last_obs = JobTuple(
-            to_train_indxs,
-            [0] * len(to_train_indxs),
-            ["act"] * len(to_train_indxs)
+            *zip(*((inx, 0, inf) for inx, _, inf in to_train_jobs))
         )
 
         # We are ready to fill the rollout_buffer with shared_memory buffer
-        last_obs = self.env.fill(rollout_buffer, to_train_indxs)
+        last_obs = self.env.fill(rollout_buffer, list(self._last_obs.index))
 
         # Calculate next_values
         # with th.no_grad():
         #     obs_tensor = th.as_tensor(last_obs).to(self.device)
         #     _, last_val, _ = self.policy.forward(obs_tensor)
-        # The line below is a consequence of uncorrected bug
-        last_val = self.env.sharedbuffer.buffer.dones[-1, to_train_indxs]
+
+        # The three lines below is a consequence of uncorrected bug
+        last_val = self.env.sharedbuffer.buffer.dones[-1, self._last_obs.index]
         last_val = th.as_tensor(last_val)
-        dones = self.env.sharedbuffer.buffer.dones[-1, to_train_indxs].flatten()
+        dones = self.env.sharedbuffer.buffer.dones[-1, self._last_obs.index].flatten()
 
         rollout_buffer.compute_returns_and_advantage(last_val, dones=dones)
 

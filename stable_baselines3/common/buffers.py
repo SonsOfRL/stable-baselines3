@@ -560,3 +560,6 @@ class MultiSharedRolloutBuffer(BaseBuffer):
             self.buffer.last_obs[index] = next_obs
         else:
             self.buffer.observations[pos + 1, index] = next_obs
+
+    def close(self):
+        MultiSharedRolloutBuffer.shared_mem_count -= 1
