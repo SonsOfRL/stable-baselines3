@@ -125,7 +125,7 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
         #     _, last_val, _ = self.policy.forward(obs_tensor)
 
         # The three lines below is a consequence of uncorrected bug
-        last_val = self.env.sharedbuffer.buffer.dones[-1, self._last_obs.index]
+        last_val = self.env.sharedbuffer.buffer.values[-1, self._last_obs.index]
         last_val = th.as_tensor(last_val)
         dones = self.env.sharedbuffer.buffer.dones[-1, self._last_obs.index].flatten()
 
