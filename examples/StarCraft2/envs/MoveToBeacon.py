@@ -1,57 +1,140 @@
-"""
-This module is adapted from Islam Elnabarawy
-https://github.com/islamelnabarawy/sc2gym
-MovetoBeacon
-"""
-
-from pysc2.lib import actions, features
+import gym
+from pysc2.env import sc2_env
+from pysc2.lib import actions, features, units
+from gym import spaces
+import logging
 import numpy as np
-import gym.spaces as spaces
 
-from examples.StarCraft2.envs.base_env import SC2Env
-
-
-_PLAYER_RELATIVE = features.SCREEN_FEATURES.player_relative.index
-_PLAYER_RELATIVE_SCALE = features.SCREEN_FEATURES.player_relative.scale
-
-_NO_OP = actions.FUNCTIONS.no_op.id
-
-_SELECT_ARMY = actions.FUNCTIONS.select_army.id
-_SELECT_ALL = [0]
-
-_MOVE_SCREEN = actions.FUNCTIONS.Move_screen.id
-_NOT_QUEUED = [0]
-
-_MAP_NAME = 'MoveToBeacon'
+logger = logging.getLogger(__name__)
 
 
-class MoveToBeaconEnv(SC2Env):
-    def __init__(self):
-        super(MoveToBeaconEnv, self).__init__(map_name=_MAP_NAME)
-        self.action_space = spaces.Discrete(64*64)
-        high = np.ones((5, 64, 64), dtype=np.int32)
-        low = np.zeros((5, 64, 64), dtype=np.int32)
-        self.observation_space = spaces.Box(low=low, high=high)
+class DZBEnv(gym.Env):
+    metadata = {'render.modes': ['human']}
+    default_settings = {
+        'map_name': "MoveToBeacon",
+        'players': [sc2_env.Agent(sc2_env.Race.terran)],
+        'agent_interface_format': features.AgentInterfaceFormat(
+            action_space=actions.ActionSpace.RAW,
+            use_raw_units=True,
+            raw_resolution=64),
+        'realtime': False
+    }
+
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.kwargs = kwargs
+        self.env = None
+        self.marines = []
+        # 0 no operation
+        # 1~32 move
+        # 33~122 attack
+        self.action_space = spaces.Discrete(123)
+        # [0: x, 1: y, 2: hp]
+        self.observation_space = spaces.Box(
+            low=0,
+            high=64,
+            shape=(19, 3),
+            dtype=np.uint8
+        )
 
     def reset(self):
-        super().reset()
-        return self._post_reset()
+        if self.env is None:
+            self.init_env()
 
-    def _post_reset(self):
-        obs, reward, done, info = self._safe_step([_SELECT_ARMY, _SELECT_ALL])
-        obs = np.array(obs)
+        self.marines = []
+
+        raw_obs = self.env.reset()[0]
+        return self.get_derived_obs(raw_obs)
+
+    def init_env(self):
+        args = {**self.default_settings, **self.kwargs}
+        self.env = sc2_env.SC2Env(**args)
+
+    def get_derived_obs(self, raw_obs):
+        obs = np.zeros((19, 3), dtype=np.uint8)
+        marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
+        self.marines = []
+
+        for i, m in enumerate(marines):
+            self.marines.append(m)
+            obs[i] = np.array([m.x, m.y, m[2]])
         return obs
 
     def step(self, action):
-        y = action // 64
-        x = action % 64
-        action = [_MOVE_SCREEN, _NOT_QUEUED, [y, x]]
-        obs, reward, done, info = self._safe_step(action)
-        obs = np.array(obs)
-        return obs, reward, done, info
+        raw_obs = self.take_action(action)
+        reward = raw_obs.reward
+        obs = self.get_derived_obs(raw_obs)
+        # each step will set the dictionary to emtpy
+        return obs, reward, raw_obs.last(), {}
 
-    def preprocess_obs(self, obs):
-        screen = obs.observation.feature_screen
-        screen = self.spatial_preprocess([screen[_PLAYER_RELATIVE]],
-                                         [features.SCREEN_FEATURES[_PLAYER_RELATIVE]])
-        return screen[0]
+    def take_action(self, action):
+        if action == 0:
+            action_mapped = actions.RAW_FUNCTIONS.no_op()
+        else:
+            derived_action = np.floor((action - 1) / 8)
+            idx = (action - 1) % 8
+            if derived_action == 0:
+                action_mapped = self.move_up(idx)
+            elif derived_action == 1:
+                action_mapped = self.move_down(idx)
+            elif derived_action == 2:
+                action_mapped = self.move_left(idx)
+            else:
+                action_mapped = self.move_right(idx)
+
+        raw_obs = self.env.step([action_mapped])[0]
+        return raw_obs
+
+    def move_up(self, idx):
+        idx = np.floor(idx)
+        try:
+            selected = self.marines[idx]
+            new_pos = [selected.x, selected.y - 2]
+            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
+        except:
+            return actions.RAW_FUNCTIONS.no_op()
+
+    def move_down(self, idx):
+        try:
+            selected = self.marines[idx]
+            new_pos = [selected.x, selected.y + 2]
+            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
+        except:
+            return actions.RAW_FUNCTIONS.no_op()
+
+    def move_left(self, idx):
+        try:
+            selected = self.marines[idx]
+            new_pos = [selected.x - 2, selected.y]
+            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
+        except:
+            return actions.RAW_FUNCTIONS.no_op()
+
+    def move_right(self, idx):
+        try:
+            selected = self.marines[idx]
+            new_pos = [selected.x + 2, selected.y]
+            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
+        except:
+            return actions.RAW_FUNCTIONS.no_op()
+
+    def get_units_by_type(self, obs, unit_type, player_relative=0):
+        """
+        NONE = 0
+        SELF = 1
+        ALLY = 2
+        NEUTRAL = 3
+        ENEMY = 4
+        """
+        return [unit for unit in obs.observation.raw_units
+                if unit.unit_type == unit_type
+                and unit.alliance == player_relative]
+
+    def close(self):
+
+        if self.env is not None:
+            self.env.close()
+        super().close()
+
+    def render(self, mode='human', close=False):
+        pass

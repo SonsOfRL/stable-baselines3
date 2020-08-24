@@ -8,6 +8,7 @@ with open(os.path.join("stable_baselines3", "version.txt"), "r") as file_handler
 
 long_description = """
 
+
 # Stable Baselines3
 
 Stable Baselines3 is a set of improved implementations of reinforcement learning algorithms in PyTorch. It is the next major version of [Stable Baselines](https://github.com/hill-a/stable-baselines).

@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class DZBEnv(gym.Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
-        'map_name': "DefeatRoaches",
+        'map_name': "FindAndDefeatZerglings",
         'players': [sc2_env.Agent(sc2_env.Race.terran),
                     sc2_env.Bot(sc2_env.Race.zerg, sc2_env.Difficulty.hard)],
         'agent_interface_format': features.AgentInterfaceFormat(
@@ -26,7 +26,7 @@ class DZBEnv(gym.Env):
         self.kwargs = kwargs
         self.env = None
         self.marines = []
-        self.roaches = []
+        self.zerglings = []
         # 0 no operation
         # 1~32 move
         # 33~122 attack
@@ -44,7 +44,7 @@ class DZBEnv(gym.Env):
             self.init_env()
 
         self.marines = []
-        self.roaches = []
+        self.zerglings = []
 
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
@@ -56,17 +56,17 @@ class DZBEnv(gym.Env):
     def get_derived_obs(self, raw_obs):
         obs = np.zeros((19, 3), dtype=np.uint8)
         marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
-        roaches = self.get_units_by_type(raw_obs, units.Zerg.Roach, 4)
+        zerglings = self.get_units_by_type(raw_obs, units.Zerg.Zergling, 4)
         self.marines = []
-        self.roaches = []
+        self.zerglings = []
 
         for i, m in enumerate(marines):
             self.marines.append(m)
             obs[i] = np.array([m.x, m.y, m[2]])
 
-        for i, b in enumerate(roaches):
-            self.roaches.append(b)
-            obs[i + 9] = np.array([b.x, b.y, b[2]])
+        for i, z in enumerate(zerglings):
+            self.zerglings.append(z)
+            obs[i + 13] = np.array([z.x, z.y, z[2]])
 
         return obs
 
@@ -135,7 +135,7 @@ class DZBEnv(gym.Env):
     def attack(self, aidx, eidx):
         try:
             selected = self.marines[aidx]
-            target = self.roaches[eidx]
+            target = self.zerglings[eidx]
             return actions.RAW_FUNCTIONS.Attack_unit("now", selected.tag, target.tag)
         except:
             return actions.RAW_FUNCTIONS.no_op()
