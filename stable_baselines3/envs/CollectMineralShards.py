@@ -1,6 +1,6 @@
 import gym
-from pysc2.env import sc2_env
-from pysc2.lib import actions, features, units
+from pysc2.pysc2.env import sc2_env
+from pysc2.pysc2.lib import actions, features, units
 from gym import spaces
 import logging
 import numpy as np
@@ -8,12 +8,11 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-class DZBEnv(gym.Env):
+class CMSEnv(gym.Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
-        'map_name': "FindAndDefeatZerglings",
-        'players': [sc2_env.Agent(sc2_env.Race.terran),
-                    sc2_env.Bot(sc2_env.Race.zerg, sc2_env.Difficulty.hard)],
+        'map_name': "CollectMineralShards",
+        'players': [sc2_env.Agent(sc2_env.Race.terran)],
         'agent_interface_format': features.AgentInterfaceFormat(
             action_space=actions.ActionSpace.RAW,
             use_raw_units=True,
@@ -26,7 +25,6 @@ class DZBEnv(gym.Env):
         self.kwargs = kwargs
         self.env = None
         self.marines = []
-        self.zerglings = []
         # 0 no operation
         # 1~32 move
         # 33~122 attack
@@ -44,7 +42,6 @@ class DZBEnv(gym.Env):
             self.init_env()
 
         self.marines = []
-        self.zerglings = []
 
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
@@ -56,18 +53,11 @@ class DZBEnv(gym.Env):
     def get_derived_obs(self, raw_obs):
         obs = np.zeros((19, 3), dtype=np.uint8)
         marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
-        zerglings = self.get_units_by_type(raw_obs, units.Zerg.Zergling, 4)
         self.marines = []
-        self.zerglings = []
 
         for i, m in enumerate(marines):
             self.marines.append(m)
             obs[i] = np.array([m.x, m.y, m[2]])
-
-        for i, z in enumerate(zerglings):
-            self.zerglings.append(z)
-            obs[i + 13] = np.array([z.x, z.y, z[2]])
-
         return obs
 
     def step(self, action):
@@ -80,7 +70,7 @@ class DZBEnv(gym.Env):
     def take_action(self, action):
         if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
-        elif action <= 32:
+        else:
             derived_action = np.floor((action - 1) / 8)
             idx = (action - 1) % 8
             if derived_action == 0:
@@ -91,10 +81,6 @@ class DZBEnv(gym.Env):
                 action_mapped = self.move_left(idx)
             else:
                 action_mapped = self.move_right(idx)
-        else:
-            eidx = np.floor((action - 33) / 9)
-            aidx = (action - 33) % 9
-            action_mapped = self.attack(aidx, eidx)
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
@@ -129,14 +115,6 @@ class DZBEnv(gym.Env):
             selected = self.marines[idx]
             new_pos = [selected.x + 2, selected.y]
             return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
-
-    def attack(self, aidx, eidx):
-        try:
-            selected = self.marines[aidx]
-            target = self.zerglings[eidx]
-            return actions.RAW_FUNCTIONS.Attack_unit("now", selected.tag, target.tag)
         except:
             return actions.RAW_FUNCTIONS.no_op()
 

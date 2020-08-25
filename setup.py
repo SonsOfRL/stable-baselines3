@@ -80,6 +80,7 @@ setup(
         "pandas",
         # Plotting learning curves
         "matplotlib",
+        "pysc2"
     ],
     extras_require={
         "tests": [
