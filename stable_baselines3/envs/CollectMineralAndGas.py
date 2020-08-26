@@ -1,6 +1,6 @@
 import gym
-from pysc2.pysc2.env import sc2_env
-from pysc2.pysc2.lib import actions, features, units
+from pysc2.env import sc2_env
+from pysc2.lib import actions, features, units
 from gym import spaces
 import logging
 import numpy as np
@@ -26,6 +26,10 @@ class CMGEnv(gym.Env):
         self.kwargs = kwargs
         self.env = None
         self.SCVs = []
+        self.supply_depot = []
+        self.command_center = []
+        self.refinery = []
+
         # 0 no operation
         # 1~32 move
         # 33~122 attack
@@ -43,6 +47,9 @@ class CMGEnv(gym.Env):
             self.init_env()
 
         self.SCVs = []
+        self.supply_depot = []
+        self.command_center = []
+        self.refinery = []
 
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
@@ -54,11 +61,30 @@ class CMGEnv(gym.Env):
     def get_derived_obs(self, raw_obs):
         obs = np.zeros((19, 3), dtype=np.uint8)
         SCVs = self.get_units_by_type(raw_obs, units.Terran.SCV, 1)
+        supply_depot = self.get_units_by_type(raw_obs, units.Terran.SupplyDepot, 1)
+        command_center = self.get_units_by_type(raw_obs, units.Terran.CommandCenter, 1)
+        refinery = self.get_units_by_type(raw_obs, units.Terran.Refinery, 1)
+
         self.SCVs = []
+        self.supply_depot = []
+        self.command_center = []
+        self.refinery = []
 
         for i, m in enumerate(SCVs):
             self.SCVs.append(m)
             obs[i] = np.array([m.x, m.y, m[2]])
+
+        for i, sd in enumerate(supply_depot):
+            self.SCVs.append(sd)
+            obs[i] = np.array([sd.x, sd.y, sd[2]])
+
+        for i, cc in enumerate(command_center):
+            self.SCVs.append(cc)
+            obs[i] = np.array([cc.x, cc.y, cc[2]])
+
+        for i, r in enumerate(refinery):
+            self.SCVs.append(r)
+            obs[i] = np.array([r.x, r.y, r[2]])
         return obs
 
     def step(self, action):
@@ -72,7 +98,7 @@ class CMGEnv(gym.Env):
         if action <= 64:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
         else:
-            derived_action = np.floor((action - 1) / 8)
+            derived_action = np.floor((action - 1) / 8)    #TODO WE DO NOT NEED IDX IN GATHERING ENVIRONMENTS
             idx = (action - 1) % 8
             if derived_action == 0:
                 action_mapped = self.move_up(idx)
@@ -85,39 +111,6 @@ class CMGEnv(gym.Env):
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
-
-    def move_up(self, idx):
-        idx = np.floor(idx)
-        try:
-            selected = self.SCVs[idx]
-            new_pos = [selected.x, selected.y - 2]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
-
-    def move_down(self, idx):
-        try:
-            selected = self.SCVs[idx]
-            new_pos = [selected.x, selected.y + 2]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
-
-    def move_left(self, idx):
-        try:
-            selected = self.SCVs[idx]
-            new_pos = [selected.x - 2, selected.y]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
-
-    def move_right(self, idx):
-        try:
-            selected = self.SCVs[idx]
-            new_pos = [selected.x + 2, selected.y]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
 
     def get_distances(self, obs, units, xy):
         units_xy = [(unit.x, unit.y) for unit in units]
@@ -159,6 +152,18 @@ class CMGEnv(gym.Env):
             mineral_patch = mineral_patches[np.argmin(distances)]
             return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
                 "now", scv.tag, mineral_patch.tag)
+        return actions.RAW_FUNCTIONS.no_op()
+
+    def build_supply_depot(self, obs):
+        supply_depots = self.get_units_by_type(obs, units.Terran.SupplyDepot)
+        scvs = self.get_units_by_type(obs, units.Terran.SCV)
+        if (len(supply_depots) == 0 and obs.observation.player.minerals >= 100 and
+                len(scvs) > 0):
+            supply_depot_xy = (22, 26)  #TODO THIS COORDINATE IS RANDOMLY SET, GIVE RANDOM LOCATION TO BUILD
+            distances = self.get_distances(obs, scvs, supply_depot_xy)
+            scv = scvs[np.argmin(distances)]
+            return actions.RAW_FUNCTIONS.Build_SupplyDepot_pt(
+                "now", scv.tag, supply_depot_xy)
         return actions.RAW_FUNCTIONS.no_op()
 
     def close(self):

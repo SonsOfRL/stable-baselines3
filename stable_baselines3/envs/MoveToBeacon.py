@@ -1,6 +1,6 @@
 import gym
-from pysc2.pysc2.env import sc2_env
-from pysc2.pysc2.lib import actions, features, units
+from pysc2.env import sc2_env
+from pysc2.lib import actions, features, units
 from gym import spaces
 import logging
 import numpy as np
