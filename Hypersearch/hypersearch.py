@@ -6,7 +6,7 @@ import stable_baselines3
 from stable_baselines3 import A2C
 from stable_baselines3.common.cmd_util import make_atari_env
 from stable_baselines3.common.vec_env import VecFrameStack
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common import logger
 from stable_baselines3.common.callbacks import BaseCallback
 
