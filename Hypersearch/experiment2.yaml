@@ -19,7 +19,7 @@ atari:
         rms_prop_eps: 0.00001
       learn:
         total_timesteps: !!float 1e7
-        log_interval: 5000
+        log_interval: 200
 
   - SpaceInvaders:
       envname: SpaceInvadersNoFrameskip-v4
@@ -41,7 +41,7 @@ atari:
         rms_prop_eps: 0.00001
       learn:
         total_timesteps: !!float 1e7
-        log_interval: 5000
+        log_interval: 200
 
   - Breakout:
       envname: BreakoutNoFrameskip-v4
@@ -63,7 +63,7 @@ atari:
         rms_prop_eps: 0.00001
       learn:
         total_timesteps: !!float 1e7
-        log_interval: 5000
+        log_interval: 200
   - Pong:
       envname: PongNoFrameskip-v4
       env:
@@ -84,7 +84,7 @@ atari:
         rms_prop_eps: 0.00001
       learn:
         total_timesteps: !!float 1e7
-        log_interval: 5000
+        log_interval: 200
 
   - SpaceInvaders:
       envname: SpaceInvadersNoFrameskip-v4
@@ -106,7 +106,7 @@ atari:
         rms_prop_eps: 0.00001
       learn:
         total_timesteps: !!float 1e7
-        log_interval: 5000
+        log_interval: 200
 
   - Breakout:
       envname: BreakoutNoFrameskip-v4
@@ -128,7 +128,7 @@ atari:
         rms_prop_eps: 0.00001
       learn:
         total_timesteps: !!float 1e7
-        log_interval: 5000
+        log_interval: 200
 
   - Pong:
       envname: PongNoFrameskip-v4
@@ -150,7 +150,7 @@ atari:
         rms_prop_eps: 0.00001
       learn:
         total_timesteps: !!float 1e7
-        log_interval: 5000
+        log_interval: 200
 
   - SpaceInvaders:
       envname: SpaceInvadersNoFrameskip-v4
@@ -172,7 +172,7 @@ atari:
         rms_prop_eps: 0.00001
       learn:
         total_timesteps: !!float 1e7
-        log_interval: 5000
+        log_interval: 200
 
   - Breakout:
       envname: BreakoutNoFrameskip-v4
@@ -194,4 +194,4 @@ atari:
         rms_prop_eps: 0.00001
       learn:
         total_timesteps: !!float 1e7
-        log_interval: 5000
+        log_interval: 200
