@@ -120,13 +120,13 @@ class AsyncOnPolicyAlgorithm(OnPolicyAlgorithm):
         last_obs = self.env.fill(rollout_buffer, list(self._last_obs.index))
 
         # Calculate next_values
-        # with th.no_grad():
-        #     obs_tensor = th.as_tensor(last_obs).to(self.device)
-        #     _, last_val, _ = self.policy.forward(obs_tensor)
+        with th.no_grad():
+            obs_tensor = th.as_tensor(last_obs).to(self.device)
+            _, last_val, _ = self.policy.forward(obs_tensor)
 
         # The three lines below is a consequence of uncorrected bug
-        last_val = self.env.sharedbuffer.buffer.values[-1, self._last_obs.index]
-        last_val = th.as_tensor(last_val)
+        # last_val = self.env.sharedbuffer.buffer.values[-1, self._last_obs.index]
+        # last_val = th.as_tensor(last_val)
         dones = self.env.sharedbuffer.buffer.dones[-1, self._last_obs.index].flatten()
 
         rollout_buffer.compute_returns_and_advantage(last_val, dones=dones)

@@ -70,7 +70,7 @@ if __name__ == "__main__":
 
         model = A2C(env=env,
                     verbose=1,
-                    tensorboard_log="logs",
+                    tensorboard_log="logs/1_per_worker_fixed",
                     **hyperparam["agent"])
 
         model.learn(callback=loggcallback,
