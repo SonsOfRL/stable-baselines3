@@ -1,4 +1,7 @@
-import gym
+import os
+import yaml
+import subprocess
+import stable_baselines3
 from stable_baselines3.envs.DefeatZerglingsAndBanelings import DZBEnv
 from stable_baselines3.envs.DefeatRoaches import DREnv
 from stable_baselines3.envs.CollectMineralAndGas import CMGEnv
@@ -6,20 +9,69 @@ from stable_baselines3.envs.CollectMineralShards import CMSEnv
 from stable_baselines3.envs.FindAndDefeatZerglings import FDZEnv
 from stable_baselines3.envs.MoveToBeacon import MTBEnv
 from stable_baselines3.envs.BuildMarines import BMEnv
-from stable_baselines3.common.policies import ActorCriticCnnPolicy
-from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3 import A2C
-from absl import flags
+from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common import logger
+from stable_baselines3.common.callbacks import BaseCallback
 
-FLAGS = flags.FLAGS
-FLAGS([''])
 
-# create vectorized environment
-env = gym.make('defeat-zerglings-banelings-v0')
-eng = DZBEnv()
-env = DummyVecEnv([lambda: DZBEnv()])
+def read_hypers():
+    with open(f"starcraft_hyper.yaml", "r") as f:
+        hyperparams_dict = yaml.safe_load(f)
+        return hyperparams_dict["starcraft"]
 
-# use A2C to learn and save the model when finished
-model = A2C(ActorCriticCnnPolicy, env, verbose=1, tensorboard_log="log/")
-model.learn(total_timesteps=int(1e5), tb_log_name="first_rum", reset_num_timesteps=False)
-model.save("model/dzb_A2C")
+
+class LoggerCallback(BaseCallback):
+
+    def __init__(self, _format, log_on_start=None, suffix=""):
+        super().__init__()
+        self._format = _format
+        self.suffix = suffix
+        if log_on_start is not None and not isinstance(log_on_start, (list, tuple)):
+            log_on_start = tuple(log_on_start)
+        self.log_on_start = log_on_start
+
+    def _on_training_start(self) -> None:
+
+        _logger = self.globals["logger"].Logger.CURRENT
+        _dir = _logger.dir
+        log_format = logger.make_output_format(self._format, _dir, self.suffix)
+        _logger.output_formats.append(log_format)
+        if self.log_on_start is not None:
+            for pair in self.log_on_start:
+                _logger.record(*pair, ("tensorboard", "stdout"))
+
+    def _on_step(self) -> bool:
+        """
+        :return: (bool) If the callback returns False, training is aborted early.
+        """
+        return True
+
+
+if __name__ == "__main__":
+
+    hyperparams = read_hypers()
+
+    path = "/" + os.path.join(*stable_baselines3.__file__.split("/")[:-2])
+    commit_num = subprocess.check_output(["git", "describe", "--always"], cwd=path).strip().decode()
+
+    for starcraftgame in hyperparams:
+
+        gamename, hyperparam = list(starcraftgame.items())[0]
+
+        loggcallback = LoggerCallback(
+            "json",
+            [("hypers", hyperparam),
+             ("commit", commit_num)]
+        )
+
+        env = DummyVecEnv([lambda: DZBEnv])
+
+        model = A2C(env=env,
+                    verbose=1,
+                    tensorboard_log="logs",
+                    **hyperparam["agent"])
+
+        model.learn(callback=loggcallback,
+                    tb_log_name=gamename,
+                    **hyperparam["learn"])
