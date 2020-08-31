@@ -5,11 +5,12 @@ from stable_baselines3.envs.base_env import SC2Env
 from gym import spaces
 import logging
 import numpy as np
+from base_env import SC2Env
 
 logger = logging.getLogger(__name__)
 
 
-class DZBEnv(gym.Env):
+class DZBEnv(SC2Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "DefeatZerglingsAndBanelings",
@@ -83,8 +84,10 @@ class DZBEnv(gym.Env):
         raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
+        done = raw_obs.last()
+        info = self.get_info() if done else {}
         # each step will set the dictionary to emtpy
-        return obs, reward, raw_obs.last(), {}
+        return obs, reward, done, info
 
     def take_action(self, action):
         if action == 0:

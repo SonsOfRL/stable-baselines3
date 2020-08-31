@@ -34,6 +34,14 @@ class SC2Env(gym.Env):
         self._episode_reward = 0
         self._total_reward = 0
 
+    def get_info(self):
+        return {
+            "episode": {
+                "r": self._episode_reward,
+                "l": self._num_step
+            }
+        }
+
     def step(self, action):
         return self._safe_step(action)
 
