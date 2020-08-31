@@ -70,7 +70,6 @@ if __name__ == "__main__":
             [("hypers", hyperparam)]
         )
 
-        #env = DummyVecEnv([lambda: DZBEnv])
 
         env = DummyVecEnv([lambda: DZBEnv()])
 

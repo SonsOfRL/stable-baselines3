@@ -81,7 +81,6 @@ setup(
         # Plotting learning curves
         "matplotlib",
         "pysc2",
-        'absl'
     ],
     extras_require={
         "tests": [
