@@ -16,7 +16,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 
 def read_hypers():
-    with open(f"starcraft_hyper.yaml", "r") as f:
+    with open(f"Starcraft_hyper.yaml", "r") as f:
         hyperparams_dict = yaml.safe_load(f)
         return hyperparams_dict["starcraft"]
 
