@@ -15,6 +15,10 @@ from stable_baselines3.common import logger
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.cmd_util import make_atari_env
 from stable_baselines3.common.vec_env import VecFrameStack
+from absl import flags
+
+FLAGS = flags.FLAGS
+FLAGS([''])
 
 
 
