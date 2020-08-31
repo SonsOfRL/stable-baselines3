@@ -6,9 +6,9 @@ https://github.com/islamelnabarawy/sc2gym
 import gym
 import sys
 import numpy as np
-from pysc2.pysc2.env import sc2_env
-from pysc2.pysc2.env.environment import StepType
-from pysc2.pysc2.lib import actions, features
+from pysc2.env import sc2_env
+from pysc2.env.environment import StepType
+from pysc2.lib import actions, features
 
 from absl import flags
 

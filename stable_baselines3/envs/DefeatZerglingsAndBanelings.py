@@ -1,6 +1,7 @@
 import gym
 from pysc2.env import sc2_env
 from pysc2.lib import actions, features, units
+from stable_baselines3.envs.base_env import SC2Env
 from gym import spaces
 import logging
 import numpy as np
@@ -36,7 +37,7 @@ class DZBEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=0,
             high=64,
-            shape=(19, 3),
+            shape=(19 * 3,),
             dtype=np.uint8
         )
 
@@ -76,7 +77,7 @@ class DZBEnv(gym.Env):
             self.zerglings.append(z)
             obs[i + 13] = np.array([z.x, z.y, z[2]])
 
-        return obs
+        return obs.reshape(-1)
 
     def step(self, action):
         raw_obs = self.take_action(action)

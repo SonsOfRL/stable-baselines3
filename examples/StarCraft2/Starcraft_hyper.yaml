@@ -8,7 +8,7 @@ starcraft:
         n_stack: 4
       agent:
         seed: 1450
-        policy: 'CnnPolicy'
+        policy: 'MlpPolicy'
         learning_rate: 0.0007
         n_steps: 10
         gamma: 0.99

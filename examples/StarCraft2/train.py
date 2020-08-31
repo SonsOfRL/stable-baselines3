@@ -17,6 +17,8 @@ from stable_baselines3.common.cmd_util import make_atari_env
 from stable_baselines3.common.vec_env import VecFrameStack
 
 
+
+
 def read_hypers():
     with open(f"Starcraft_hyper.yaml", "r") as f:
         hyperparams_dict = yaml.safe_load(f)
@@ -50,6 +52,8 @@ class LoggerCallback(BaseCallback):
         return True
 
 
+
+
 if __name__ == "__main__":
 
     hyperparams = read_hypers()
@@ -68,13 +72,13 @@ if __name__ == "__main__":
 
         #env = DummyVecEnv([lambda: DZBEnv])
 
-        dummyvecenv = DummyVecEnv([lambda: DZBEnv])
+        env = DummyVecEnv([lambda: DZBEnv()])
 
-        env = make_atari_env(hyperparam["envname"],
-                             vec_env_cls=dummyvecenv,
-                             **hyperparam["env"])
+        #env = make_atari_env(hyperparam["envname"],
+                           #  vec_env_cls=dummyvecenv,
+                           #  **hyperparam["env"])
 
-        env = VecFrameStack(env, **hyperparam["framestack"])
+        #env = VecFrameStack(env, **hyperparam["framestack"])
 
         model = A2C(env=env,
                     verbose=1,
