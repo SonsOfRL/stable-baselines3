@@ -19,6 +19,6 @@ starcraft:
         rms_prop_eps: 0.00001
       learn:
         total_timesteps: !!float 1e7
-        log_interval: 5000
+        log_interval: 200
 
  
