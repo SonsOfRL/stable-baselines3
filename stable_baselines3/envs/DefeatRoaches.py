@@ -66,7 +66,7 @@ class DREnv(gym.Env):
 
         for i, b in enumerate(roaches):
             self.roaches.append(b)
-            obs[i + 9] = np.array([b.x, b.y, b[2]])
+            obs[i + 8] = np.array([b.x, b.y, b[2]])
 
         return obs
 
@@ -92,8 +92,8 @@ class DREnv(gym.Env):
             else:
                 action_mapped = self.move_right(idx)
         else:
-            eidx = np.floor((action - 33) / 9)
-            aidx = (action - 33) % 9
+            eidx = np.floor((action - 33) / 8)       #TODO not sure tho
+            aidx = (action - 33) % 8
             action_mapped = self.attack(aidx, eidx)
 
         raw_obs = self.env.step([action_mapped])[0]

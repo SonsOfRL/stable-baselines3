@@ -71,8 +71,8 @@ class CMSEnv(gym.Env):
         if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
         else:
-            derived_action = np.floor((action - 1) / 8)
-            idx = (action - 1) % 8
+            derived_action = np.floor((action - 1) / 16)
+            idx = (action - 1) % 2
             if derived_action == 0:
                 action_mapped = self.move_up(idx)
             elif derived_action == 1:
@@ -129,6 +129,8 @@ class CMSEnv(gym.Env):
         return [unit for unit in obs.observation.raw_units
                 if unit.unit_type == unit_type
                 and unit.alliance == player_relative]
+
+    #TODO a function that sees minerals
 
     def close(self):
 

@@ -80,9 +80,9 @@ class FDZEnv(gym.Env):
     def take_action(self, action):
         if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
-        elif action <= 32:
-            derived_action = np.floor((action - 1) / 8)
-            idx = (action - 1) % 8
+        elif action <= 12:
+            derived_action = np.floor((action - 1) / 3)
+            idx = (action - 1) % 3
             if derived_action == 0:
                 action_mapped = self.move_up(idx)
             elif derived_action == 1:
@@ -92,8 +92,8 @@ class FDZEnv(gym.Env):
             else:
                 action_mapped = self.move_right(idx)
         else:
-            eidx = np.floor((action - 33) / 9)
-            aidx = (action - 33) % 9
+            eidx = np.floor((action - 13) / 9)           #TODO not sure about this
+            aidx = (action - 13) % 9
             action_mapped = self.attack(aidx, eidx)
 
         raw_obs = self.env.step([action_mapped])[0]

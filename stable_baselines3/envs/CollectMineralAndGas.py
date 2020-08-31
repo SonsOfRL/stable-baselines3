@@ -73,18 +73,21 @@ class CMGEnv(gym.Env):
         for i, m in enumerate(SCVs):
             self.SCVs.append(m)
             obs[i] = np.array([m.x, m.y, m[2]])
+        k = len(obs)
 
         for i, sd in enumerate(supply_depot):
             self.SCVs.append(sd)
-            obs[i] = np.array([sd.x, sd.y, sd[2]])
+            obs[i+k] = np.array([sd.x, sd.y, sd[2]])
+        k = len(obs)
 
         for i, cc in enumerate(command_center):
             self.SCVs.append(cc)
-            obs[i] = np.array([cc.x, cc.y, cc[2]])
+            obs[i+k] = np.array([cc.x, cc.y, cc[2]])
+        k = len(obs)
 
         for i, r in enumerate(refinery):
             self.SCVs.append(r)
-            obs[i] = np.array([r.x, r.y, r[2]])
+            obs[i+k] = np.array([r.x, r.y, r[2]])
         return obs
 
     def step(self, action):
@@ -98,7 +101,7 @@ class CMGEnv(gym.Env):
         if action <= 64:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
         else:
-            derived_action = np.floor((action - 1) / 8)    #TODO WE DO NOT NEED IDX IN GATHERING ENVIRONMENTS
+            derived_action = np.floor((action - 1) / 8)    #TODO TAKE ACTION WILL CHANGE
             idx = (action - 1) % 8
             if derived_action == 0:
                 action_mapped = self.move_up(idx)
@@ -128,6 +131,17 @@ class CMGEnv(gym.Env):
                 if unit.unit_type == unit_type
                 and unit.alliance == player_relative]
 
+    def get_my_units_by_type(self, obs, unit_type):
+        return [unit for unit in obs.observation.raw_units
+                if unit.unit_type == unit_type
+                and unit.alliance == features.PlayerRelative.SELF]
+
+    def get_my_completed_units_by_type(self, obs, unit_type):
+        return [unit for unit in obs.observation.raw_units
+                if unit.unit_type == unit_type
+                and unit.build_progress == 100
+                and unit.alliance == features.PlayerRelative.SELF]
+
     def harvest_minerals(self, obs):
         scvs = self.get_units_by_type(obs, units.Terran.SCV)
         idle_scvs = [scv for scv in scvs if scv.order_length == 0]
@@ -155,16 +169,73 @@ class CMGEnv(gym.Env):
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_supply_depot(self, obs):
-        supply_depots = self.get_units_by_type(obs, units.Terran.SupplyDepot)
         scvs = self.get_units_by_type(obs, units.Terran.SCV)
-        if (len(supply_depots) == 0 and obs.observation.player.minerals >= 100 and
-                len(scvs) > 0):
-            supply_depot_xy = (22, 26)  #TODO THIS COORDINATE IS RANDOMLY SET, GIVE RANDOM LOCATION TO BUILD
+        if obs.observation.player.minerals >= 100:
+            x = random.randint(0, 64)
+            y = random.randint(0, 64)
+            supply_depot_xy = (x, y)
             distances = self.get_distances(obs, scvs, supply_depot_xy)
             scv = scvs[np.argmin(distances)]
             return actions.RAW_FUNCTIONS.Build_SupplyDepot_pt(
                 "now", scv.tag, supply_depot_xy)
         return actions.RAW_FUNCTIONS.no_op()
+
+    def train_scv(self, obs):
+        completed_command_center = self.get_my_completed_units_by_type(
+            obs, units.Terran.CommandCenter)
+        free_supply = (obs.observation.player.food_cap -
+                       obs.observation.player.food_used)
+        if (len(completed_command_center) > 0 and obs.observation.player.minerals >= 50
+                and free_supply > 0):
+            for cc in range(len(completed_command_center)):
+                command_center = self.get_my_units_by_type(obs, units.Terran.Barracks)[cc]
+                if command_center.order_length < 1:
+                    return actions.RAW_FUNCTIONS.Train_Marine_quick("now", command_center.tag)
+            x = random.randint(0, len(completed_command_center))
+            command_center = self.get_my_units_by_type(obs, units.Terran.CommandCenter)[x]
+            if command_center.order_length < 5:
+                return actions.RAW_FUNCTIONS.Train_SCV_quick("now", command_center.tag)
+        return actions.RAW_FUNCTIONS.no_op()
+
+    def build_refinery(self, obs):
+        scvs = self.get_units_by_type(obs, units.Terran.SCV)
+        geysers = [unit for unit in obs.observation.raw_units
+                   if unit.unit_type in [
+                       units.Neutral.ProtossVespeneGeyser,
+                       units.Neutral.PurifierVespeneGeyser,
+                       units.Neutral.RichVespeneGeyser,
+                       units.Neutral.ShakurasVespeneGeyser,
+                       units.Neutral.VespeneGeyser,
+                   ]]
+        scv = random.choice(scvs)
+        distances = self.get_distances(obs, geysers, (scv.x, scv.y))
+        geyser = geysers[np.argmin(distances)]
+        return actions.RAW_FUNCTIONS.Build_Refinery_pt(
+                "now", scv.tag, (geyser.x, geyser.y))
+
+    def harvest_gas(self, obs):
+        scvs = self.get_units_by_type(obs, units.Terran.SCV)
+        refineries = self.get_units_by_type(obs, units.Terran.Refinery)
+        if len(refineries) > 0:
+            refinery = random.choice(refineries)
+            if features.FeatureUnit.ideal_harvesters > features.FeatureUnit.assigned_harvesters:  #TODO ideal harvesters for gas or mineral ?
+                scv = random.choice(scvs)
+                return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
+                    "now", scv.tag, refinery.tag)
+        return actions.RAW_FUNCTIONS.no_op()
+
+    def build_command_center(self, obs):
+        scvs = self.get_units_by_type(obs, units.Terran.SCV)
+        completed_command_center = self.get_my_completed_units_by_type(
+            obs, units.Terran.CommandCenter)
+        if len(completed_command_center) == 1 and obs.observation.player.minerals >= 400:
+            command_center_xy = (34, 32)                                   #TODO not sure about the coordinates
+            distances = self.get_distances(obs, scvs, command_center_xy)
+            scv = scvs[np.argmin(distances)]
+            return actions.RAW_FUNCTIONS.Build_CommandCenter_pt(
+                "now", scv.tag, command_center_xy)
+        else:
+            return actions.RAW_FUNCTIONS.no_op()
 
     def close(self):
 

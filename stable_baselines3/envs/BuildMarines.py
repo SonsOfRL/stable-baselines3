@@ -1,6 +1,7 @@
 import gym
 from pysc2.env import sc2_env
 from pysc2.lib import actions, features, units
+from pysc2.agents import base_agent
 from gym import spaces
 import logging
 import numpy as np
@@ -27,9 +28,13 @@ class BMEnv(gym.Env):
         self.env = None
         self.SCVs = []
         # 0 no operation
-        # 1~32 move
-        # 33~122 attack
-        self.action_space = spaces.Discrete(123)
+        # 1 harvest minerals
+        # 2 train SCV's
+        # 3 build supply depot
+        # 4 build barracks
+        # 5 train marines
+
+        self.action_space = spaces.Discrete(6)
         # [0: x, 1: y, 2: hp]
         self.observation_space = spaces.Box(
             low=0,
@@ -65,59 +70,24 @@ class BMEnv(gym.Env):
         raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
-        # each step will set the dictionary to emtpy
         return obs, reward, raw_obs.last(), {}
 
     def take_action(self, action):
-        if action <= 64:
+        if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
+        elif action == 1:
+            action_mapped = self.harvest_minerals(obs)
+        elif action == 2:
+            action_mapped = self.train_scv(obs)                 #TODO how can I give observations ????
+        elif action == 3:
+            action_mapped = self.build_supply_depot(obs)
+        elif action == 4:
+            action_mapped = self.build_barracks(obs)
         else:
-            derived_action = np.floor((action - 1) / 8)
-            idx = (action - 1) % 8
-            if derived_action == 0:
-                action_mapped = self.move_up(idx)
-            elif derived_action == 1:
-                action_mapped = self.move_down(idx)
-            elif derived_action == 2:
-                action_mapped = self.move_left(idx)
-            else:
-                action_mapped = self.move_right(idx)
+            action_mapped = self.train_marine(obs)
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
-
-    def move_up(self, idx):
-        idx = np.floor(idx)
-        try:
-            selected = self.SCVs[idx]
-            new_pos = [selected.x, selected.y - 2]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
-
-    def move_down(self, idx):
-        try:
-            selected = self.SCVs[idx]
-            new_pos = [selected.x, selected.y + 2]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
-
-    def move_left(self, idx):
-        try:
-            selected = self.SCVs[idx]
-            new_pos = [selected.x - 2, selected.y]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
-
-    def move_right(self, idx):
-        try:
-            selected = self.SCVs[idx]
-            new_pos = [selected.x + 2, selected.y]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
 
     def get_distances(self, obs, units, xy):
         units_xy = [(unit.x, unit.y) for unit in units]
@@ -134,6 +104,17 @@ class BMEnv(gym.Env):
         return [unit for unit in obs.observation.raw_units
                 if unit.unit_type == unit_type
                 and unit.alliance == player_relative]
+
+    def get_my_units_by_type(self, obs, unit_type):
+        return [unit for unit in obs.observation.raw_units
+                if unit.unit_type == unit_type
+                and unit.alliance == features.PlayerRelative.SELF]
+
+    def get_my_completed_units_by_type(self, obs, unit_type):
+        return [unit for unit in obs.observation.raw_units
+                if unit.unit_type == unit_type
+                and unit.build_progress == 100
+                and unit.alliance == features.PlayerRelative.SELF]
 
     def harvest_minerals(self, obs):
         scvs = self.get_units_by_type(obs, units.Terran.SCV)
@@ -159,6 +140,63 @@ class BMEnv(gym.Env):
             mineral_patch = mineral_patches[np.argmin(distances)]
             return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
                 "now", scv.tag, mineral_patch.tag)
+        return actions.RAW_FUNCTIONS.no_op()
+
+    def build_supply_depot(self, obs):
+        scvs = self.get_units_by_type(obs, units.Terran.SCV)
+        if obs.observation.player.minerals >= 100:
+            x = random.randint(0, 64)
+            y = random.randint(0, 64)
+            supply_depot_xy = (x, y)
+            distances = self.get_distances(obs, scvs, supply_depot_xy)
+            scv = scvs[np.argmin(distances)]
+            return actions.RAW_FUNCTIONS.Build_SupplyDepot_pt(
+                "now", scv.tag, supply_depot_xy)
+        return actions.RAW_FUNCTIONS.no_op()
+
+    def build_barracks(self, obs):
+        completed_supply_depots = self.get_my_completed_units_by_type(
+            obs, units.Terran.SupplyDepot)
+        scvs = self.get_my_units_by_type(obs, units.Terran.SCV)
+        if (len(completed_supply_depots) > 0 and
+                obs.observation.player.minerals >= 150 and len(scvs) > 0):
+            x = random.randint(0, 64)
+            y = random.randint(0, 64)
+            barracks_xy = (x, y)
+            distances = self.get_distances(obs, scvs, barracks_xy)
+            scv = scvs[np.argmin(distances)]
+            return actions.RAW_FUNCTIONS.Build_Barracks_pt(
+                "now", scv.tag, barracks_xy)
+        return actions.RAW_FUNCTIONS.no_op()
+
+    def train_marine(self, obs):
+        completed_barrackses = self.get_my_completed_units_by_type(
+            obs, units.Terran.Barracks)
+        free_supply = (obs.observation.player.food_cap -
+                       obs.observation.player.food_used)
+        if (len(completed_barrackses) > 0 and obs.observation.player.minerals >= 100
+                and free_supply > 0):
+            for b in range(len(completed_barrackses)):
+                barracks = self.get_my_units_by_type(obs, units.Terran.Barracks)[b]
+                if barracks.order_length < 1:
+                    return actions.RAW_FUNCTIONS.Train_Marine_quick("now", barracks.tag)
+
+            x = random.randint(0, len(completed_barrackses))
+            barracks = self.get_my_units_by_type(obs, units.Terran.Barracks)[x]
+            if barracks.order_length < 5:
+                return actions.RAW_FUNCTIONS.Train_Marine_quick("now", barracks.tag)
+        return actions.RAW_FUNCTIONS.no_op()
+
+    def train_scv(self, obs):
+        completed_command_center = self.get_my_completed_units_by_type(
+            obs, units.Terran.CommandCenter)
+        free_supply = (obs.observation.player.food_cap -
+                       obs.observation.player.food_used)
+        if (len(completed_command_center) > 0 and obs.observation.player.minerals >= 50
+                and free_supply > 0):
+            command_center = self.get_my_units_by_type(obs, units.Terran.CommandCenter)[0]
+            if command_center.order_length < 5:
+                return actions.RAW_FUNCTIONS.Train_SCV_quick("now", command_center.tag)
         return actions.RAW_FUNCTIONS.no_op()
 
     def close(self):
