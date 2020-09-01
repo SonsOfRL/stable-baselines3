@@ -1,7 +1,6 @@
-import gym
 from pysc2.env import sc2_env
 from pysc2.lib import actions, features, units
-from pysc2.agents import base_agent
+from stable_baselines3.envs.base_env import SC2Env
 from gym import spaces
 import logging
 import numpy as np
@@ -10,7 +9,7 @@ import random
 logger = logging.getLogger(__name__)
 
 
-class BMEnv(gym.Env):
+class BMEnv(SC2Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "CollectMineralAndGas",
@@ -58,7 +57,7 @@ class BMEnv(gym.Env):
 
     def get_derived_obs(self, raw_obs):
         obs = np.zeros((19, 3), dtype=np.uint8)
-        SCVs = self.get_units_by_type(raw_obs, units.Terran.SCV, 1)
+        SCVs = self.get_units_by_type(raw_obs, units.Terran.SCV, 1)   #TODO observation space is off
         self.SCVs = []
 
         for i, m in enumerate(SCVs):
@@ -72,13 +71,13 @@ class BMEnv(gym.Env):
         obs = self.get_derived_obs(raw_obs)
         return obs, reward, raw_obs.last(), {}
 
-    def take_action(self, action):
+    def take_action(self, action, obs):
         if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
         elif action == 1:
             action_mapped = self.harvest_minerals(obs)
         elif action == 2:
-            action_mapped = self.train_scv(obs)                 #TODO how can I give observations ????
+            action_mapped = self.train_scv(obs)
         elif action == 3:
             action_mapped = self.build_supply_depot(obs)
         elif action == 4:

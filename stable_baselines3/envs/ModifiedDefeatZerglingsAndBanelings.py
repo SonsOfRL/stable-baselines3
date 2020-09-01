@@ -1,6 +1,7 @@
 import gym
 from pysc2.env import sc2_env
 from pysc2.lib import actions, features, units
+from stable_baselines3.envs.base_env import SC2Env
 from gym import spaces
 import logging
 import numpy as np
@@ -8,10 +9,10 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-class DREnv(gym.Env):
+class DZBEnv(gym.Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
-        'map_name': "DefeatRoaches",
+        'map_name': "ModifiedDefeatZerglingsAndBanelings",
         'players': [sc2_env.Agent(sc2_env.Race.terran),
                     sc2_env.Bot(sc2_env.Race.zerg, sc2_env.Difficulty.hard)],
         'agent_interface_format': features.AgentInterfaceFormat(
@@ -26,7 +27,8 @@ class DREnv(gym.Env):
         self.kwargs = kwargs
         self.env = None
         self.marines = []
-        self.roaches = []
+        self.banelings = []
+        self.zerglings = []
         # 0 no operation
         # 1~32 move
         # 33~122 attack
@@ -35,7 +37,7 @@ class DREnv(gym.Env):
         self.observation_space = spaces.Box(
             low=0,
             high=64,
-            shape=(13 * 3,),
+            shape=(19 * 3,),
             dtype=np.uint8
         )
 
@@ -44,7 +46,8 @@ class DREnv(gym.Env):
             self.init_env()
 
         self.marines = []
-        self.roaches = []
+        self.banelings = []
+        self.zerglings = []
 
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
@@ -56,17 +59,23 @@ class DREnv(gym.Env):
     def get_derived_obs(self, raw_obs):
         obs = np.zeros((19, 3), dtype=np.uint8)
         marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
-        roaches = self.get_units_by_type(raw_obs, units.Zerg.Roach, 4)
+        zerglings = self.get_units_by_type(raw_obs, units.Zerg.Zergling, 4)
+        banelings = self.get_units_by_type(raw_obs, units.Zerg.Baneling, 4)
         self.marines = []
-        self.roaches = []
+        self.banelings = []
+        self.zerglings = []
 
         for i, m in enumerate(marines):
             self.marines.append(m)
             obs[i] = np.array([m.x, m.y, m[2]])
 
-        for i, b in enumerate(roaches):
-            self.roaches.append(b)
+        for i, b in enumerate(banelings):
+            self.banelings.append(b)
             obs[i + len(marines)] = np.array([b.x, b.y, b[2]])
+
+        for i, z in enumerate(zerglings):
+            self.zerglings.append(z)
+            obs[i + len(marines)+len(banelings)] = np.array([z.x, z.y, z[2]])
 
         return obs.reshape(-1)
 
@@ -92,8 +101,8 @@ class DREnv(gym.Env):
             else:
                 action_mapped = self.move_right(idx)
         else:
-            eidx = np.floor((action - 33) / 8)       #TODO not sure tho
-            aidx = (action - 33) % 8
+            eidx = np.floor((action - 33) / 9)
+            aidx = (action - 33) % 9
             action_mapped = self.attack(aidx, eidx)
 
         raw_obs = self.env.step([action_mapped])[0]
@@ -135,7 +144,11 @@ class DREnv(gym.Env):
     def attack(self, aidx, eidx):
         try:
             selected = self.marines[aidx]
-            target = self.roaches[eidx]
+            if eidx > 3:
+                # attack zerglings
+                target = self.zerglings[eidx - 4]
+            else:
+                target = self.banelings[eidx]
             return actions.RAW_FUNCTIONS.Attack_unit("now", selected.tag, target.tag)
         except:
             return actions.RAW_FUNCTIONS.no_op()

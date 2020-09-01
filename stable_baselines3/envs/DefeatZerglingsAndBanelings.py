@@ -5,7 +5,7 @@ from stable_baselines3.envs.base_env import SC2Env
 from gym import spaces
 import logging
 import numpy as np
-from base_env import SC2Env
+
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +72,11 @@ class DZBEnv(SC2Env):
 
         for i, b in enumerate(banelings):
             self.banelings.append(b)
-            obs[i + 9] = np.array([b.x, b.y, b[2]])
+            obs[i + len(marines)] = np.array([b.x, b.y, b[2]])
 
         for i, z in enumerate(zerglings):
             self.zerglings.append(z)
-            obs[i + 13] = np.array([z.x, z.y, z[2]])
+            obs[i + len(marines)+len(banelings)] = np.array([z.x, z.y, z[2]])
 
         return obs.reshape(-1)
 

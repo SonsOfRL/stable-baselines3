@@ -1,5 +1,6 @@
 import gym
 from pysc2.env import sc2_env
+from pysc2.agents import base_agent
 from pysc2.lib import actions, features, units
 from gym import spaces
 import logging
@@ -7,8 +8,12 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+_PLAYER_SELF = features.PlayerRelative.SELF
+_PLAYER_NEUTRAL = features.PlayerRelative.NEUTRAL  # beacon/minerals
+_PLAYER_ENEMY = features.PlayerRelative.ENEMY
 
-class MTBEnv(gym.Env):
+
+class MTBEnv(base_agent.BaseAgent):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "MoveToBeacon",
@@ -25,6 +30,7 @@ class MTBEnv(gym.Env):
         self.kwargs = kwargs
         self.env = None
         self.marines = []
+        self.beacon = []
         # 0 no operation
         # 1~32 move
         # 33~122 attack
@@ -33,7 +39,7 @@ class MTBEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=0,
             high=64,
-            shape=(19, 3),
+            shape=(2 * 2,),
             dtype=np.uint8
         )
 
@@ -42,6 +48,7 @@ class MTBEnv(gym.Env):
             self.init_env()
 
         self.marines = []
+        self.beacon = []
 
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
@@ -50,15 +57,25 @@ class MTBEnv(gym.Env):
         args = {**self.default_settings, **self.kwargs}
         self.env = sc2_env.SC2Env(**args)
 
-    def get_derived_obs(self, raw_obs):
-        obs = np.zeros((19, 3), dtype=np.uint8)
+    def get_derived_obs(self, raw_obs, obs):
+        Neutral = features.PlayerRelative.NEUTRAL
+        beacon = self._xy_locs(Neutral)
+
         marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
         self.marines = []
+        obs = np.zeros((2, 2), dtype=np.uint8)
 
         for i, m in enumerate(marines):
             self.marines.append(m)
-            obs[i] = np.array([m.x, m.y, m[2]])
+            obs[0] = np.array([m.x, m.y])
+
+        obs[1] = beacon
         return obs
+
+    def get_neutral_units_by_type(self, obs, unit_type):
+        return [unit for unit in obs.observation.raw_units
+                if unit.unit_type == unit_type
+                and unit.alliance == features.PlayerRelative.NEUTRAL]
 
     def step(self, action):
         raw_obs = self.take_action(action)
@@ -93,6 +110,12 @@ class MTBEnv(gym.Env):
             return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
         except:
             return actions.RAW_FUNCTIONS.no_op()
+
+    def _xy_locs(mask):
+        """Mask should be a set of bools from comparison with a feature layer."""
+        y, x = mask.nonzero()
+        return list(zip(x, y))
+
 
     def move_down(self, idx):
         try:
@@ -130,13 +153,5 @@ class MTBEnv(gym.Env):
                 if unit.unit_type == unit_type
                 and unit.alliance == player_relative]
 
-    #TODO a function that sees beacons
 
-    def close(self):
 
-        if self.env is not None:
-            self.env.close()
-        super().close()
-
-    def render(self, mode='human', close=False):
-        pass

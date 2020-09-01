@@ -1,5 +1,6 @@
 import gym
 from pysc2.env import sc2_env
+from pysc2.agents import base_agent
 from pysc2.lib import actions, features, units
 from gym import spaces
 import logging
@@ -9,7 +10,7 @@ import random
 logger = logging.getLogger(__name__)
 
 
-class CMGEnv(gym.Env):
+class CMGEnv(base_agent.BaseAgent):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "CollectMineralAndGas",
