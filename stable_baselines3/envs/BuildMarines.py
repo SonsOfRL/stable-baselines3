@@ -26,6 +26,9 @@ class BMEnv(SC2Env):
         self.kwargs = kwargs
         self.env = None
         self.SCVs = []
+        self.depot = []
+        self.cc = []
+        self.barracks = []
         # 0 no operation
         # 1 harvest minerals
         # 2 train SCV's
@@ -38,7 +41,7 @@ class BMEnv(SC2Env):
         self.observation_space = spaces.Box(
             low=0,
             high=64,
-            shape=(19, 3),
+            shape=(5 * 1,),
             dtype=np.uint8
         )
 
@@ -47,6 +50,9 @@ class BMEnv(SC2Env):
             self.init_env()
 
         self.SCVs = []
+        self.depot = []
+        self.cc = []
+        self.barracks = []
 
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
@@ -56,14 +62,21 @@ class BMEnv(SC2Env):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs):
-        obs = np.zeros((19, 3), dtype=np.uint8)
-        SCVs = self.get_units_by_type(raw_obs, units.Terran.SCV, 1)   #TODO observation space is off
-        self.SCVs = []
+        obs = np.zeros((6, 1), dtype=np.uint8)
+        SCVs = self.get_units_by_type(raw_obs, units.Terran.SCV, 1)
+        depots = self.get_units_by_type(raw_obs, units.Terran.SupplyDepot, 1)
+        barracks = self.get_units_by_type(raw_obs, units.Terran.Barracks, 1)
 
-        for i, m in enumerate(SCVs):
-            self.SCVs.append(m)
-            obs[i] = np.array([m.x, m.y, m[2]])
-        return obs
+        obs[0] = len(SCVs)
+        obs[1] = len(depots)
+        obs[2] = len(barracks)
+        #obs[3] = (is scv produced ?)
+        #obs[4] = (how many marine production ?)
+        #obs[5] = (current minerals)
+
+
+
+        return obs.reshape(-1)
 
     def step(self, action):
         raw_obs = self.take_action(action)
