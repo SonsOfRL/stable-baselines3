@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
 
         # env = DummyVecEnv([lambda: DZBEnv()])
-        env = SubprocVecEnv([lambda: DZBEnv() for i in range(hyperparam["env"]["n_envs"])])
+        env = SubprocVecEnv([lambda: MDZBEnv() for i in range(hyperparam["env"]["n_envs"])])
 
         #env = make_atari_env(hyperparam["envname"],
                            #  vec_env_cls=dummyvecenv,
