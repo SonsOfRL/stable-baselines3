@@ -9,7 +9,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-class DZBEnv(gym.Env):
+class MDZBEnv(gym.Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "ModifiedDefeatZerglingsAndBanelings",

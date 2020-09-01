@@ -8,7 +8,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-class DREnv(gym.Env):
+class MDREnv(gym.Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "ModifiedDefeatRoaches",

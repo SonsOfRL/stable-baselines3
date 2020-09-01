@@ -3,9 +3,9 @@ import yaml
 import subprocess
 import stable_baselines3
 
-from stable_baselines3.envs.ModifiedDefeatZerglingsAndBanelings import DZBEnv
+from stable_baselines3.envs.ModifiedDefeatZerglingsAndBanelings import MDZBEnv
 from stable_baselines3.envs.DefeatZerglingsAndBanelings import DZBEnv
-from stable_baselines3.envs.ModifiedDefeatRoaches import DREnv
+from stable_baselines3.envs.ModifiedDefeatRoaches import MDREnv
 from stable_baselines3.envs.DefeatRoaches import DREnv
 from stable_baselines3.envs.CollectMineralAndGas import CMGEnv
 from stable_baselines3.envs.CollectMineralShards import CMSEnv
