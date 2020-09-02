@@ -51,7 +51,15 @@ class Actor(BasePolicy):
         action_dim = get_action_dim(self.action_space)
         actor_net = create_mlp(features_dim, action_dim, net_arch, activation_fn, squash_output=True)
         # Deterministic action
-        self.mu = nn.Sequential(*actor_net)
+
+        linear_indxes = [ix for ix, layer in enumerate(actor_net) if isinstance(layer, nn.Linear)]
+        if len(linear_indxes) == 0:
+            raise ValueError("No linear layer found!")
+
+        self.feature_size = actor_net[linear_indxes[-1]].in_features
+
+        self.pre_mu = nn.Sequential(*actor_net[:linear_indxes[-1]])
+        self.mu = nn.Sequential(*actor_net[linear_indxes[-1]:])
 
     def _get_data(self) -> Dict[str, Any]:
         data = super()._get_data()
@@ -69,7 +77,8 @@ class Actor(BasePolicy):
     def forward(self, obs: th.Tensor, deterministic: bool = True) -> th.Tensor:
         # assert deterministic, 'The TD3 actor only outputs deterministic actions'
         features = self.extract_features(obs)
-        return self.mu(features)
+        features = self.pre_mu(features)
+        return self.mu(features), features
 
     def _predict(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
         return self.forward(observation, deterministic=deterministic)
@@ -150,6 +159,7 @@ class TD3Policy(BasePolicy):
 
     def _build(self, lr_schedule: Callable) -> None:
         self.actor = self.make_actor()
+        self.critic_kwargs.update({"feature_layer_size": self.actor.feature_size})
         self.actor_target = self.make_actor()
         self.actor_target.load_state_dict(self.actor.state_dict())
         self.actor.optimizer = self.optimizer_class(self.actor.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)

@@ -158,6 +158,7 @@ class ReplayBuffer(BaseBuffer):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
+        feature_size: int,
         device: Union[th.device, str] = "cpu",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
@@ -165,6 +166,8 @@ class ReplayBuffer(BaseBuffer):
         super(ReplayBuffer, self).__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
 
         assert n_envs == 1, "Replay buffer only support single environment for now"
+
+        self.feature_size = feature_size
 
         # Check that the replay buffer can fit into the memory
         if psutil is not None:
@@ -180,6 +183,7 @@ class ReplayBuffer(BaseBuffer):
         self.actions = np.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=action_space.dtype)
         self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.features = np.zeros((self.buffer_size, self.n_envs, self.feature_size), dtype=np.float32)
 
         if psutil is not None:
             total_memory_usage = self.observations.nbytes + self.actions.nbytes + self.rewards.nbytes + self.dones.nbytes
@@ -195,7 +199,7 @@ class ReplayBuffer(BaseBuffer):
                     f"replay buffer {total_memory_usage:.2f}GB > {mem_available:.2f}GB"
                 )
 
-    def add(self, obs: np.ndarray, next_obs: np.ndarray, action: np.ndarray, reward: np.ndarray, done: np.ndarray) -> None:
+    def add(self, obs: np.ndarray, next_obs: np.ndarray, action: np.ndarray, reward: np.ndarray, done: np.ndarray, feature: np.ndarray) -> None:
         # Copy to avoid modification by reference
         self.observations[self.pos] = np.array(obs).copy()
         if self.optimize_memory_usage:
@@ -206,6 +210,7 @@ class ReplayBuffer(BaseBuffer):
         self.actions[self.pos] = np.array(action).copy()
         self.rewards[self.pos] = np.array(reward).copy()
         self.dones[self.pos] = np.array(done).copy()
+        self.features[self.pos] = np.array(feature).copy()
 
         self.pos += 1
         if self.pos == self.buffer_size:
@@ -246,6 +251,7 @@ class ReplayBuffer(BaseBuffer):
             next_obs,
             self.dones[batch_inds],
             self._normalize_reward(self.rewards[batch_inds], env),
+            self.features[batch_inds, 0]
         )
         return ReplayBufferSamples(*tuple(map(self.to_torch, data)))
 

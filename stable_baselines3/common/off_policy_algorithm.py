@@ -147,18 +147,19 @@ class OffPolicyAlgorithm(BaseAlgorithm):
     def _setup_model(self) -> None:
         self._setup_lr_schedule()
         self.set_random_seed(self.seed)
-        self.replay_buffer = ReplayBuffer(
-            self.buffer_size,
-            self.observation_space,
-            self.action_space,
-            self.device,
-            optimize_memory_usage=self.optimize_memory_usage,
-        )
         self.policy = self.policy_class(
             self.observation_space,
             self.action_space,
             self.lr_schedule,
             **self.policy_kwargs  # pytype:disable=not-instantiable
+        )
+        self.replay_buffer = ReplayBuffer(
+            self.buffer_size,
+            self.observation_space,
+            self.action_space,
+            self.policy.actor.feature_size,
+            self.device,
+            optimize_memory_usage=self.optimize_memory_usage,
         )
         self.policy = self.policy.to(self.device)
 
@@ -293,11 +294,12 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         if self.num_timesteps < learning_starts and not (self.use_sde and self.use_sde_at_warmup):
             # Warmup phase
             unscaled_action = np.array([self.action_space.sample()])
+            features = th.zeros((self._last_obs.shape[0], self.policy.actor.feature_size), dtype=th.float32)
         else:
             # Note: when using continuous actions,
             # we assume that the policy uses tanh to scale the action
             # We use non-deterministic action in the case of SAC, for TD3, it does not matter
-            unscaled_action, _ = self.predict(self._last_obs, deterministic=False)
+            unscaled_action, _, features = self.predict(self._last_obs, deterministic=False)
 
         # Rescale the action from [low, high] to [-1, 1]
         if isinstance(self.action_space, gym.spaces.Box):
@@ -314,7 +316,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             # Discrete case, no need to normalize or clip
             buffer_action = unscaled_action
             action = buffer_action
-        return action, buffer_action
+        return action, buffer_action, features
 
     def _dump_logs(self) -> None:
         """
@@ -396,7 +398,8 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                     self.actor.reset_noise()
 
                 # Select action randomly or according to policy
-                action, buffer_action = self._sample_action(learning_starts, action_noise)
+                action, buffer_action, features = self._sample_action(learning_starts, action_noise)
+                features = features.cpu().numpy()
 
                 # Rescale and perform action
                 new_obs, reward, done, infos = env.step(action)
@@ -415,6 +418,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
 
                 # Retrieve reward and episode length if using Monitor wrapper
                 self._update_info_buffer(infos, done)
+                print(infos)
 
                 # Store data in replay buffer
                 if replay_buffer is not None:
@@ -426,7 +430,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                         # Avoid changing the original ones
                         self._last_original_obs, new_obs_, reward_ = self._last_obs, new_obs, reward
 
-                    replay_buffer.add(self._last_original_obs, new_obs_, buffer_action, reward_, done)
+                    replay_buffer.add(self._last_original_obs, new_obs_, buffer_action, reward_, done, features)
 
                 self._last_obs = new_obs
                 # Save the unnormalized observation

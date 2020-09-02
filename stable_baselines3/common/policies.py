@@ -256,7 +256,7 @@ class BasePolicy(BaseModel):
 
         observation = th.as_tensor(observation).to(self.device)
         with th.no_grad():
-            actions = self._predict(observation, deterministic=deterministic)
+            actions, features = self._predict(observation, deterministic=deterministic)
         # Convert to numpy
         actions = actions.cpu().numpy()
 
@@ -274,7 +274,7 @@ class BasePolicy(BaseModel):
                 raise ValueError("Error: The environment must be vectorized when using recurrent policies.")
             actions = actions[0]
 
-        return actions, state
+        return actions, state, features
 
     def scale_action(self, action: np.ndarray) -> np.ndarray:
         """
@@ -694,6 +694,7 @@ class ContinuousCritic(BaseModel):
         net_arch: List[int],
         features_extractor: nn.Module,
         features_dim: int,
+        feature_layer_size: int,
         activation_fn: Type[nn.Module] = nn.ReLU,
         normalize_images: bool = True,
         n_critics: int = 2,
@@ -710,19 +711,19 @@ class ContinuousCritic(BaseModel):
         self.n_critics = n_critics
         self.q_networks = []
         for idx in range(n_critics):
-            q_net = create_mlp(features_dim + action_dim, 1, net_arch, activation_fn)
+            q_net = create_mlp(features_dim + action_dim + feature_layer_size, 1, net_arch, activation_fn)
             q_net = nn.Sequential(*q_net)
             self.add_module(f"qf{idx}", q_net)
             self.q_networks.append(q_net)
 
-    def forward(self, obs: th.Tensor, actions: th.Tensor) -> Tuple[th.Tensor, ...]:
+    def forward(self, obs: th.Tensor, actions: th.Tensor, layer_features: th.Tensor) -> Tuple[th.Tensor, ...]:
         # Learn the features extractor using the policy loss only
         with th.no_grad():
             features = self.extract_features(obs)
-        qvalue_input = th.cat([features, actions], dim=1)
+        qvalue_input = th.cat([features, actions, layer_features], dim=1)
         return tuple(q_net(qvalue_input) for q_net in self.q_networks)
 
-    def q1_forward(self, obs: th.Tensor, actions: th.Tensor) -> th.Tensor:
+    def q1_forward(self, obs: th.Tensor, actions: th.Tensor, layer_features: th.Tensor) -> th.Tensor:
         """
         Only predict the Q-value using the first network.
         This allows to reduce computation when all the estimates are not needed
@@ -730,7 +731,7 @@ class ContinuousCritic(BaseModel):
         """
         with th.no_grad():
             features = self.extract_features(obs)
-        return self.q_networks[0](th.cat([features, actions], dim=1))
+        return self.q_networks[0](th.cat([features, actions, layer_features], dim=1))
 
 
 def create_sde_features_extractor(
