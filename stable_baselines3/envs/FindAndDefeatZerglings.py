@@ -39,7 +39,7 @@ class FDZEnv(SC2Env):
         self.observation_space = spaces.Box(
             low=0,
             high=64,
-            shape=(19 * 3,),  #TODO
+            shape=(10 * 3,),
             dtype=np.uint8
         )
 
@@ -62,7 +62,7 @@ class FDZEnv(SC2Env):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs):
-        obs = np.zeros((19, 3), dtype=np.uint8)
+        obs = np.zeros((10, 3), dtype=np.uint8)
         marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
         zerglings = self.get_units_by_type(raw_obs, units.Zerg.Zergling, 4)
         self.marines = []
