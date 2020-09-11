@@ -3,9 +3,7 @@ import yaml
 import subprocess
 import stable_baselines3
 
-from stable_baselines3.envs.ModifiedDefeatZerglingsAndBanelings import MDZBEnv
 from stable_baselines3.envs.DefeatZerglingsAndBanelings import DZBEnv
-from stable_baselines3.envs.ModifiedDefeatRoaches import MDREnv
 from stable_baselines3.envs.DefeatRoaches import DREnv
 from stable_baselines3.envs.CollectMineralAndGas import CMGEnv
 from stable_baselines3.envs.CollectMineralShards import CMSEnv
@@ -79,7 +77,7 @@ if __name__ == "__main__":
 
 
         # env = DummyVecEnv([lambda: DZBEnv()])
-        env = SubprocVecEnv([lambda: MDZBEnv() for i in range(hyperparam["env"]["n_envs"])])
+        env = SubprocVecEnv([lambda: DZBEnv() for i in range(hyperparam["env"]["n_envs"])])
 
         #env = make_atari_env(hyperparam["envname"],
                            #  vec_env_cls=dummyvecenv,

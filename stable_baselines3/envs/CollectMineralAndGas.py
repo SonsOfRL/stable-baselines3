@@ -1,7 +1,6 @@
-import gym
 from pysc2.env import sc2_env
-from pysc2.agents import base_agent
 from pysc2.lib import actions, features, units
+from stable_baselines3.envs.base_env import SC2Env
 from gym import spaces
 import logging
 import numpy as np
@@ -10,7 +9,7 @@ import random
 logger = logging.getLogger(__name__)
 
 
-class CMGEnv(base_agent.BaseAgent):
+class CMGEnv(SC2Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "CollectMineralAndGas",
@@ -31,15 +30,19 @@ class CMGEnv(base_agent.BaseAgent):
         self.command_center = []
         self.refinery = []
 
+        self._num_step = 0
+        self._episode_reward = 0
+        self._episode = 0
+
         # 0 no operation
         # 1~32 move
         # 33~122 attack
-        self.action_space = spaces.Discrete(123)
+        self.action_space = spaces.Discrete(7)
         # [0: x, 1: y, 2: hp]
         self.observation_space = spaces.Box(
             low=0,
             high=64,
-            shape=(19, 3),
+            shape=(11 * 1),
             dtype=np.uint8
         )
 
@@ -52,6 +55,10 @@ class CMGEnv(base_agent.BaseAgent):
         self.command_center = []
         self.refinery = []
 
+        self._episode += 1
+        self._num_step = 0
+        self._episode_reward = 0
+
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
 
@@ -60,58 +67,74 @@ class CMGEnv(base_agent.BaseAgent):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs):
-        obs = np.zeros((19, 3), dtype=np.uint8)
+        obs = np.zeros((11, 1), dtype=np.uint8)
         SCVs = self.get_units_by_type(raw_obs, units.Terran.SCV, 1)
+        idle_scvs = [scv for scv in SCVs if scv.order_length == 0]
         supply_depot = self.get_units_by_type(raw_obs, units.Terran.SupplyDepot, 1)
         command_center = self.get_units_by_type(raw_obs, units.Terran.CommandCenter, 1)
         refinery = self.get_units_by_type(raw_obs, units.Terran.Refinery, 1)
+        minerals = obs.observation.player.minerals
+        free_supply =(obs.observation.player.food_cap -
+                       obs.observation.player.food_used)
 
-        self.SCVs = []
-        self.supply_depot = []
-        self.command_center = []
-        self.refinery = []
+        obs[0] = len(SCVs)
+        obs[1] = len(supply_depot)
+        obs[2] = len(command_center)
+        obs[3] = len(refinery)
 
-        for i, m in enumerate(SCVs):
-            self.SCVs.append(m)
-            obs[i] = np.array([m.x, m.y, m[2]])
-        k = len(obs)
+        if obs.observation.player.minerals >= 50: # can afford SCV ?
+            obs[4] = 1
+        else:
+            obs[4] = 0
 
-        for i, sd in enumerate(supply_depot):
-            self.SCVs.append(sd)
-            obs[i+k] = np.array([sd.x, sd.y, sd[2]])
-        k = len(obs)
+        if obs.observation.player.minerals >= 100: # can afford depot ?
+            obs[5] = 1
+        else:
+            obs[5] = 0
 
-        for i, cc in enumerate(command_center):
-            self.SCVs.append(cc)
-            obs[i+k] = np.array([cc.x, cc.y, cc[2]])
-        k = len(obs)
+        if obs.observation.player.minerals >= 400: # can afford command center?
+            obs[6] = 1
+        else:
+            obs[6] = 0
 
-        for i, r in enumerate(refinery):
-            self.SCVs.append(r)
-            obs[i+k] = np.array([r.x, r.y, r[2]])
-        return obs
+        if obs.observation.player.minerals >= 75: # can afford refinery ?
+            obs[7] = 1
+        else:
+            obs[7] = 0
+
+        obs[8] = minerals
+        obs[9] = free_supply
+        obs[10] = idle_scvs
+        return obs.reshape(-1)
 
     def step(self, action):
         raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
+        self._num_step += 1
+        self._episode_reward += reward
+        self._total_reward += reward
+        done = raw_obs.last()
+        info = self.get_info() if done else {}
         # each step will set the dictionary to emtpy
-        return obs, reward, raw_obs.last(), {}
+        return obs, reward, done, info
 
     def take_action(self, action):
-        if action <= 64:
+
+        if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
-        else:
-            derived_action = np.floor((action - 1) / 8)    #TODO TAKE ACTION WILL CHANGE
-            idx = (action - 1) % 8
-            if derived_action == 0:
-                action_mapped = self.move_up(idx)
-            elif derived_action == 1:
-                action_mapped = self.move_down(idx)
-            elif derived_action == 2:
-                action_mapped = self.move_left(idx)
-            else:
-                action_mapped = self.move_right(idx)
+        elif action == 1:
+            action_mapped = self.train_scv()
+        elif action == 2:
+            action_mapped = self.harvest_minerals()
+        elif action == 3:
+            action_mapped = self.build_supply_depot()
+        elif action == 4:
+            action_mapped = self.build_refinery()
+        elif action == 5:
+            action_mapped = self.build_command_center()
+        elif action == 6:
+            action_mapped = self.harvest_gas()
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
@@ -216,10 +239,10 @@ class CMGEnv(base_agent.BaseAgent):
 
     def harvest_gas(self, obs):
         scvs = self.get_units_by_type(obs, units.Terran.SCV)
-        refineries = self.get_units_by_type(obs, units.Terran.Refinery)
+        refineries = self.get_my_completed_units_by_type(obs, units.Terran.Refinery)
         if len(refineries) > 0:
             refinery = random.choice(refineries)
-            if features.FeatureUnit.ideal_harvesters > features.FeatureUnit.assigned_harvesters:  #TODO ideal harvesters for gas or mineral ?
+            if refinery.features.FeatureUnit.ideal_harvesters > refinery.features.FeatureUnit.assigned_harvesters:
                 scv = random.choice(scvs)
                 return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
                     "now", scv.tag, refinery.tag)
