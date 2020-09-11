@@ -1,14 +1,14 @@
-import gym
 from pysc2.env import sc2_env
 from pysc2.lib import actions, features, units
 from gym import spaces
+from stable_baselines3.envs.base_env import SC2Env
 import logging
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
-class FDZEnv(gym.Env):
+class FDZEnv(SC2Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "FindAndDefeatZerglings",
@@ -27,6 +27,10 @@ class FDZEnv(gym.Env):
         self.env = None
         self.marines = []
         self.zerglings = []
+        self._num_step = 0
+        self._episode_reward = 0
+        self._episode = 0
+
         # 0 no operation
         # 1~32 move
         # 33~122 attack
@@ -35,7 +39,7 @@ class FDZEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=0,
             high=64,
-            shape=(19, 3),
+            shape=(19 * 3,),  #TODO
             dtype=np.uint8
         )
 
@@ -45,6 +49,10 @@ class FDZEnv(gym.Env):
 
         self.marines = []
         self.zerglings = []
+
+        self._episode += 1
+        self._num_step = 0
+        self._episode_reward = 0
 
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
@@ -60,22 +68,38 @@ class FDZEnv(gym.Env):
         self.marines = []
         self.zerglings = []
 
+        if len(zerglings) > 0:
+            enemy_on_sight = 1
+        else:
+            enemy_on_sight = 0
+
+        obs[0] = np.array([enemy_on_sight, enemy_on_sight, enemy_on_sight])
+
         for i, m in enumerate(marines):
             self.marines.append(m)
-            obs[i] = np.array([m.x, m.y, m[2]])
+            obs[i+1] = np.array([m.x, m.y, m[2]])
 
         for i, z in enumerate(zerglings):
             self.zerglings.append(z)
-            obs[i + 13] = np.array([z.x, z.y, z[2]])
+            obs[i + 4] = np.array([z.x, z.y, z[2]])
 
-        return obs
+        return obs.reshape(-1)
 
     def step(self, action):
         raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
+        self._num_step += 1
+        self._episode_reward += reward
+        self._total_reward += reward
+        info = self.get_info() if done else {}
         # each step will set the dictionary to emtpy
-        return obs, reward, raw_obs.last(), {}
+        return obs, reward, done, info
+
+    def get_enemy_units_by_type(self, obs, unit_type):
+        return [unit for unit in obs.observation.raw_units
+                if unit.unit_type == unit_type
+                and unit.alliance == features.PlayerRelative.ENEMY]
 
     def take_action(self, action):
         if action == 0:
@@ -92,7 +116,7 @@ class FDZEnv(gym.Env):
             else:
                 action_mapped = self.move_right(idx)
         else:
-            eidx = np.floor((action - 13) / 9)           #TODO not sure about this
+            eidx = np.floor((action - 13) / 9)          #TODO this attack function is so bad it may hurt the training
             aidx = (action - 13) % 9
             action_mapped = self.attack(aidx, eidx)
 

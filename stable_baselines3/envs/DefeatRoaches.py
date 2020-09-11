@@ -29,6 +29,7 @@ class DREnv(SC2Env):
         self.roaches = []
         self._num_step = 0
         self._episode_reward = 0
+        self._episode = 0
         # 0 no operation
         # 1~32 move
         # 33~122 attack
