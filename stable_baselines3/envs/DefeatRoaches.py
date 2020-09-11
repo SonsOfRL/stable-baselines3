@@ -81,6 +81,7 @@ class DREnv(SC2Env):
         raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
+        done = raw_obs.last()
         self._num_step += 1
         self._episode_reward += reward
         self._total_reward += reward

@@ -85,6 +85,7 @@ class MTBEnv(SC2Env):
         self._num_step += 1
         self._episode_reward += reward
         self._total_reward += reward
+        done = raw_obs.last()
         info = self.get_info() if done else {}
         # each step will set the dictionary to emtpy
         return obs, reward, done, info
