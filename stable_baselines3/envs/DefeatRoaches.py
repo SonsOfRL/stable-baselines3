@@ -1,6 +1,6 @@
-import gym
 from pysc2.env import sc2_env
 from pysc2.lib import actions, features, units
+from stable_baselines3.envs.base_env import SC2Env
 from gym import spaces
 import logging
 import numpy as np
@@ -8,7 +8,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-class DREnv(gym.Env):
+class DREnv(SC2Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "DefeatRoaches",
@@ -27,6 +27,8 @@ class DREnv(gym.Env):
         self.env = None
         self.marines = []
         self.roaches = []
+        self._num_step = 0
+        self._episode_reward = 0
         # 0 no operation
         # 1~32 move
         # 33~122 attack
@@ -46,6 +48,10 @@ class DREnv(gym.Env):
         self.marines = []
         self.roaches = []
 
+        self._episode += 1
+        self._num_step = 0
+        self._episode_reward = 0
+
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
 
@@ -54,7 +60,7 @@ class DREnv(gym.Env):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs):
-        obs = np.zeros((19, 3), dtype=np.uint8)
+        obs = np.zeros((13, 3), dtype=np.uint8)
         marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
         roaches = self.get_units_by_type(raw_obs, units.Zerg.Roach, 4)
         self.marines = []
@@ -74,8 +80,12 @@ class DREnv(gym.Env):
         raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
+        self._num_step += 1
+        self._episode_reward += reward
+        self._total_reward += reward
+        info = self.get_info() if done else {}
         # each step will set the dictionary to emtpy
-        return obs, reward, raw_obs.last(), {}
+        return obs, reward, done, info
 
     def take_action(self, action):
         if action == 0:
@@ -92,8 +102,8 @@ class DREnv(gym.Env):
             else:
                 action_mapped = self.move_right(idx)
         else:
-            eidx = np.floor((action - 33) / 8)       #TODO not sure tho
-            aidx = (action - 33) % 8
+            eidx = np.floor((action - 33) / 9)
+            aidx = (action - 33) % 9
             action_mapped = self.attack(aidx, eidx)
 
         raw_obs = self.env.step([action_mapped])[0]
