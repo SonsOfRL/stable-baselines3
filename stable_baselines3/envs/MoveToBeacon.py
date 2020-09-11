@@ -1,19 +1,14 @@
-import gym
 from pysc2.env import sc2_env
-from pysc2.agents import base_agent
 from pysc2.lib import actions, features, units
 from gym import spaces
 import logging
 import numpy as np
+from stable_baselines3.envs.base_env import SC2Env
 
 logger = logging.getLogger(__name__)
 
-_PLAYER_SELF = features.PlayerRelative.SELF
-_PLAYER_NEUTRAL = features.PlayerRelative.NEUTRAL  # beacon/minerals
-_PLAYER_ENEMY = features.PlayerRelative.ENEMY
 
-
-class MTBEnv(base_agent.BaseAgent):
+class MTBEnv(SC2Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "MoveToBeacon",
@@ -31,6 +26,9 @@ class MTBEnv(base_agent.BaseAgent):
         self.env = None
         self.marines = []
         self.beacon = []
+        self._num_step = 0
+        self._episode_reward = 0
+        self._episode = 0
         # 0 no operation
         # 1~32 move
         # 33~122 attack
@@ -49,6 +47,9 @@ class MTBEnv(base_agent.BaseAgent):
 
         self.marines = []
         self.beacon = []
+        self._episode += 1
+        self._num_step = 0
+        self._episode_reward = 0
 
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
@@ -58,19 +59,19 @@ class MTBEnv(base_agent.BaseAgent):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs, obs):
-        Neutral = features.PlayerRelative.NEUTRAL
-        beacon = self._xy_locs(Neutral)
+        _PLAYER_NEUTRAL = features.PlayerRelative.NEUTRAL
+        # player_relative = obs.observation.feature_screen.player_relative
+        # beacon = self._xy_locs(player_relative == _PLAYER_NEUTRAL)
 
-        marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
-        self.marines = []
+        beacon = [[unit.x, unit.y] for unit in obs.observation.feature_screen.player_relative
+                  if unit.alliance == _PLAYER_NEUTRAL]
+
+        marine = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
         obs = np.zeros((2, 2), dtype=np.uint8)
 
-        for i, m in enumerate(marines):
-            self.marines.append(m)
-            obs[0] = np.array([m.x, m.y])
-
+        obs[0] = [marine[0].x, marine[0].y]
         obs[1] = beacon
-        return obs
+        return obs.reshape(-1)
 
     def get_neutral_units_by_type(self, obs, unit_type):
         return [unit for unit in obs.observation.raw_units
@@ -81,8 +82,12 @@ class MTBEnv(base_agent.BaseAgent):
         raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
+        self._num_step += 1
+        self._episode_reward += reward
+        self._total_reward += reward
+        info = self.get_info() if done else {}
         # each step will set the dictionary to emtpy
-        return obs, reward, raw_obs.last(), {}
+        return obs, reward, done, info
 
     def take_action(self, action):
         if action == 0:
@@ -115,7 +120,6 @@ class MTBEnv(base_agent.BaseAgent):
         """Mask should be a set of bools from comparison with a feature layer."""
         y, x = mask.nonzero()
         return list(zip(x, y))
-
 
     def move_down(self, idx):
         try:
@@ -152,6 +156,3 @@ class MTBEnv(base_agent.BaseAgent):
         return [unit for unit in obs.observation.raw_units
                 if unit.unit_type == unit_type
                 and unit.alliance == player_relative]
-
-
-
