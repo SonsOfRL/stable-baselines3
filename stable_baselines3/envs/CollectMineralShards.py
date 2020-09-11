@@ -1,14 +1,14 @@
-import gym
 from pysc2.env import sc2_env
 from pysc2.lib import actions, features, units
 from gym import spaces
 import logging
 import numpy as np
+from stable_baselines3.envs.base_env import SC2Env
 
 logger = logging.getLogger(__name__)
 
 
-class CMSEnv(gym.Env):
+class CMSEnv(SC2Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "CollectMineralShards",
@@ -25,6 +25,10 @@ class CMSEnv(gym.Env):
         self.kwargs = kwargs
         self.env = None
         self.marines = []
+        self._num_step = 0
+        self._episode_reward = 0
+        self._episode = 0
+
         # 0 no operation
         # 1~32 move
         # 33~122 attack
@@ -33,7 +37,7 @@ class CMSEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=0,
             high=64,
-            shape=(19, 3),
+            shape=(30 * 2,),
             dtype=np.uint8
         )
 
@@ -43,6 +47,10 @@ class CMSEnv(gym.Env):
 
         self.marines = []
 
+        self._episode += 1
+        self._num_step = 0
+        self._episode_reward = 0
+
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
 
@@ -51,21 +59,34 @@ class CMSEnv(gym.Env):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs):
-        obs = np.zeros((19, 3), dtype=np.uint8)
+        _PLAYER_NEUTRAL = features.PlayerRelative.NEUTRAL
+
+        obs = np.zeros((30, 2), dtype=np.uint8)
         marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
         self.marines = []
 
-        for i, m in enumerate(marines):
-            self.marines.append(m)
-            obs[i] = np.array([m.x, m.y, m[2]])
-        return obs
+        minerals = [[unit.x, unit.y] for unit in obs.observation.feature_units
+                    if unit.alliance == _PLAYER_NEUTRAL]
+
+        for i, Marine in enumerate(marines):
+            self.marines.append(Marine)
+            obs[i] = np.array([Marine.x, Marine.y])
+
+        for i, mineral in enumerate(minerals):
+            self.marines.append(mineral)
+            obs[i+2] = minerals[i]
+        return obs.reshape(-1)
 
     def step(self, action):
         raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
+        self._num_step += 1
+        self._episode_reward += reward
+        self._total_reward += reward
+        info = self.get_info() if done else {}
         # each step will set the dictionary to emtpy
-        return obs, reward, raw_obs.last(), {}
+        return obs, reward, done, info
 
     def take_action(self, action):
         if action == 0:
@@ -129,8 +150,6 @@ class CMSEnv(gym.Env):
         return [unit for unit in obs.observation.raw_units
                 if unit.unit_type == unit_type
                 and unit.alliance == player_relative]
-
-    #TODO a function that sees minerals
 
     def close(self):
 
