@@ -16,6 +16,7 @@ from stable_baselines3.common import logger
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.cmd_util import make_atari_env
 from stable_baselines3.common.vec_env import VecFrameStack
+from pysc2.env import sc2_env, run_loop
 from absl import flags
 
 FLAGS = flags.FLAGS
@@ -63,9 +64,6 @@ if __name__ == "__main__":
 
     hyperparams = read_hypers()
 
-    #path = "/" + os.path.join(*stable_baselines3.__file__.split("/")[:-2])
-    #commit_num = subprocess.check_output(["git", "describe", "--always"], cwd=path).strip().decode()
-
     for starcraftgame in hyperparams:
 
         gamename, hyperparam = list(starcraftgame.items())[0]
@@ -75,15 +73,9 @@ if __name__ == "__main__":
             [("hypers", hyperparam)]
         )
 
-
-        # env = DummyVecEnv([lambda: DZBEnv()])
         env = SubprocVecEnv([lambda: DZBEnv() for i in range(hyperparam["env"]["n_envs"])])
+        #run_loop.run_loop([DZBEnv()], env, max_episodes=1000)
 
-        #env = make_atari_env(hyperparam["envname"],
-                           #  vec_env_cls=dummyvecenv,
-                           #  **hyperparam["env"])
-
-        #env = VecFrameStack(env, **hyperparam["framestack"])
 
         model = A2C(env=env,
                     verbose=1,

@@ -167,7 +167,7 @@ class CMGEnv(SC2Env):
                 and unit.alliance == features.PlayerRelative.SELF]
 
     def harvest_minerals(self, obs):
-        scvs = self.get_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_units_by_type(obs, units.Terran.SCV)
         idle_scvs = [scv for scv in scvs if scv.order_length == 0]
         if len(idle_scvs) > 0:
             mineral_patches = [unit for unit in obs.observation.raw_units
@@ -193,7 +193,7 @@ class CMGEnv(SC2Env):
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_supply_depot(self, obs):
-        scvs = self.get_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_units_by_type(obs, units.Terran.SCV)
         if obs.observation.player.minerals >= 100:
             x = random.randint(0, 64)
             y = random.randint(0, 64)
@@ -222,7 +222,7 @@ class CMGEnv(SC2Env):
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_refinery(self, obs):
-        scvs = self.get_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_units_by_type(obs, units.Terran.SCV)
         geysers = [unit for unit in obs.observation.raw_units
                    if unit.unit_type in [
                        units.Neutral.ProtossVespeneGeyser,
@@ -238,7 +238,7 @@ class CMGEnv(SC2Env):
                 "now", scv.tag, (geyser.x, geyser.y))
 
     def harvest_gas(self, obs):
-        scvs = self.get_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_completed_units_by_type(obs, units.Terran.SCV)
         refineries = self.get_my_completed_units_by_type(obs, units.Terran.Refinery)
         if len(refineries) > 0:
             refinery = random.choice(refineries)
@@ -249,13 +249,14 @@ class CMGEnv(SC2Env):
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_command_center(self, obs):
-        scvs = self.get_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_units_by_type(obs, units.Terran.SCV)
         completed_command_center = self.get_my_completed_units_by_type(
             obs, units.Terran.CommandCenter)
+        cc_location = [completed_command_center[0].x, completed_command_center[0].y]
         if len(completed_command_center) == 1 and obs.observation.player.minerals >= 400:
-            command_center_xy = (34, 32)                                   #TODO not sure about the coordinates
-            distances = self.get_distances(obs, scvs, command_center_xy)
-            scv = scvs[np.argmin(distances)]
+            command_center_xy = [completed_command_center[0].x + 5, completed_command_center[0].y]
+            # distances = self.get_distances(obs, scvs, command_center_xy)
+            scv = random.choice(scvs)
             return actions.RAW_FUNCTIONS.Build_CommandCenter_pt(
                 "now", scv.tag, command_center_xy)
         else:
