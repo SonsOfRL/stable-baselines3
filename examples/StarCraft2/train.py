@@ -58,8 +58,6 @@ class LoggerCallback(BaseCallback):
         return True
 
 
-
-
 if __name__ == "__main__":
 
     hyperparams = read_hypers()
@@ -73,7 +71,7 @@ if __name__ == "__main__":
             [("hypers", hyperparam)]
         )
 
-        env = SubprocVecEnv([lambda: DZBEnv() for i in range(hyperparam["env"]["n_envs"])])
+        env = SubprocVecEnv([lambda: DREnv() for i in range(hyperparam["env"]["n_envs"])])
         #run_loop.run_loop([DZBEnv()], env, max_episodes=1000)
 
 

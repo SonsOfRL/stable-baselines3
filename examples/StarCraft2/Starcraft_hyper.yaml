@@ -1,9 +1,9 @@
 starcraft:
-  - DefeatZerglingsAndBanelings:
-      envname: DefeatZerglingsAndBanelings-v0
+  - DefeatRoaches:
+      envname: DefeatRoaches-v0
       env:
         seed: 450
-        n_envs: 16
+        n_envs: 30
       framestack:
         n_stack: 4
       agent:
