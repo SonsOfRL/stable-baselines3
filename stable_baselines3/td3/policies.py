@@ -56,10 +56,7 @@ class Actor(BasePolicy):
         if len(linear_indxes) == 0:
             raise ValueError("No linear layer found!")
 
-        self.feature_size = actor_net[linear_indxes[-1]].in_features
-
-        self.pre_mu = nn.Sequential(*actor_net[:linear_indxes[-1]])
-        self.mu = nn.Sequential(*actor_net[linear_indxes[-1]:])
+        self.mu = nn.Sequential(*actor_net)
 
     def _get_data(self) -> Dict[str, Any]:
         data = super()._get_data()
@@ -77,11 +74,19 @@ class Actor(BasePolicy):
     def forward(self, obs: th.Tensor, deterministic: bool = True) -> th.Tensor:
         # assert deterministic, 'The TD3 actor only outputs deterministic actions'
         features = self.extract_features(obs)
-        features = self.pre_mu(features)
-        return self.mu(features), features
+        return self.mu(features), self._flatten_params()
 
     def _predict(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
         return self.forward(observation, deterministic=deterministic)
+
+    def _flatten_params(self):
+        params_list = [th.flatten(p) for p in self.mu.parameters()]
+        return th.cat(params_list)
+
+    @property
+    def param_size(self):
+        params_list = [th.flatten(p) for p in self.mu.parameters()]
+        return sum(param.size()[0] for param in params_list)
 
 
 class TD3Policy(BasePolicy):
@@ -110,7 +115,8 @@ class TD3Policy(BasePolicy):
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         lr_schedule: Callable,
-        net_arch: Optional[List[int]] = None,
+        actor_arch: Optional[List[int]] = None,
+        critic_arch: Optional[List[int]] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
         features_extractor_class: Type[BaseFeaturesExtractor] = FlattenExtractor,
         features_extractor_kwargs: Optional[Dict[str, Any]] = None,
@@ -130,28 +136,38 @@ class TD3Policy(BasePolicy):
         )
 
         # Default network architecture, from the original paper
-        if net_arch is None:
+        if actor_arch is None:
             if features_extractor_class == FlattenExtractor:
-                net_arch = [400, 300]
+                actor_arch = [400, 300]
             else:
-                net_arch = []
+                actor_arch = []
+
+        if critic_arch is None:
+            if features_extractor_class == FlattenExtractor:
+                critic_arch = [400, 300]
+            else:
+                critic_arch = []
 
         self.features_extractor = features_extractor_class(self.observation_space, **self.features_extractor_kwargs)
         self.features_dim = self.features_extractor.features_dim
+        self.actor_arch = actor_arch
+        self.critic_arch = critic_arch
 
-        self.net_arch = net_arch
+        self.actor_arch = actor_arch
+        self.critic_arch = critic_arch
         self.activation_fn = activation_fn
         self.net_args = {
             "observation_space": self.observation_space,
             "action_space": self.action_space,
             "features_extractor": self.features_extractor,
             "features_dim": self.features_dim,
-            "net_arch": self.net_arch,
+            "net_arch": self.actor_arch,
             "activation_fn": self.activation_fn,
             "normalize_images": normalize_images,
         }
         self.critic_kwargs = self.net_args.copy()
         self.critic_kwargs.update({"n_critics": n_critics})
+        self.critic_kwargs.update({"net_arch": self.critic_arch})
         self.actor, self.actor_target = None, None
         self.critic, self.critic_target = None, None
 
@@ -159,7 +175,7 @@ class TD3Policy(BasePolicy):
 
     def _build(self, lr_schedule: Callable) -> None:
         self.actor = self.make_actor()
-        self.critic_kwargs.update({"feature_layer_size": self.actor.feature_size})
+        self.critic_kwargs.update({"actor_param_size": self.actor.param_size})
         self.actor_target = self.make_actor()
         self.actor_target.load_state_dict(self.actor.state_dict())
         self.actor.optimizer = self.optimizer_class(self.actor.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)
@@ -173,7 +189,8 @@ class TD3Policy(BasePolicy):
 
         data.update(
             dict(
-                net_arch=self.net_args["net_arch"],
+                actor_arch=self.net_args["actor_arch"],
+                critic_arch=self.net_args["critic_arch"],
                 activation_fn=self.net_args["activation_fn"],
                 n_critics=self.critic_kwargs["n_critics"],
                 lr_schedule=self._dummy_schedule,  # dummy lr schedule, not needed for loading policy alone
@@ -227,7 +244,8 @@ class CnnPolicy(TD3Policy):
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         lr_schedule: Callable,
-        net_arch: Optional[List[int]] = None,
+        actor_arch: Optional[List[int]] = None,
+        critic_arch: Optional[List[int]] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
         features_extractor_class: Type[BaseFeaturesExtractor] = NatureCNN,
         features_extractor_kwargs: Optional[Dict[str, Any]] = None,
@@ -240,7 +258,8 @@ class CnnPolicy(TD3Policy):
             observation_space,
             action_space,
             lr_schedule,
-            net_arch,
+            actor_arch,
+            critic_arch,
             activation_fn,
             features_extractor_class,
             features_extractor_kwargs,

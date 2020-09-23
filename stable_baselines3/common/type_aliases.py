@@ -32,7 +32,8 @@ class ReplayBufferSamples(NamedTuple):
     next_observations: th.Tensor
     dones: th.Tensor
     rewards: th.Tensor
-    features: th.Tensor
+    actor_param: th.Tensor
+    next_action: th.Tensor
 
 
 class RolloutReturn(NamedTuple):

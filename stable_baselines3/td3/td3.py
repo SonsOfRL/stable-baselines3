@@ -139,16 +139,16 @@ class TD3(OffPolicyAlgorithm):
                 # Select action according to policy and add clipped noise
                 noise = replay_data.actions.clone().data.normal_(0, self.target_policy_noise)
                 noise = noise.clamp(-self.target_noise_clip, self.target_noise_clip)
-                next_actions, next_features = self.actor_target(replay_data.next_observations)
+                next_actions = replay_data.next_action
                 next_actions = (next_actions + noise).clamp(-1, 1)
 
                 # Compute the target Q value: min over all critics targets
-                targets = th.cat(self.critic_target(replay_data.next_observations, next_actions, next_features), dim=1)
+                targets = th.cat(self.critic_target(replay_data.next_observations, next_actions, replay_data.actor_param), dim=1)
                 target_q, _ = th.min(targets, dim=1, keepdim=True)
                 target_q = replay_data.rewards + (1 - replay_data.dones) * self.gamma * target_q
 
             # Get current Q estimates for each critic network
-            current_q_estimates = self.critic(replay_data.observations, replay_data.actions, replay_data.features)
+            current_q_estimates = self.critic(replay_data.observations, replay_data.actions, replay_data.actor_param)
 
             # Compute critic loss
             critic_loss = sum([F.mse_loss(current_q, target_q) for current_q in current_q_estimates])
@@ -161,7 +161,7 @@ class TD3(OffPolicyAlgorithm):
             # Delayed policy updates
             if gradient_step % self.policy_delay == 0:
                 # Compute actor loss
-                actor_loss = -self.critic.q1_forward(replay_data.observations, *self.actor(replay_data.observations)).mean()
+                actor_loss = -self.critic.q1_forward(replay_data.observations, self.actor(replay_data.observations)[0], replay_data.actor_param).mean()
 
                 # Optimize the actor
                 self.actor.optimizer.zero_grad()
