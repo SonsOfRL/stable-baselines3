@@ -122,6 +122,7 @@ class VectorizedActionNoise(ActionNoise):
             indices = range(len(self.noises))
 
         for index in indices:
+            # print(index, flush=True)
             self.noises[index].reset()
 
     def __repr__(self) -> str:

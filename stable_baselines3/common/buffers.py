@@ -164,8 +164,6 @@ class ReplayBuffer(BaseBuffer):
     ):
         super(ReplayBuffer, self).__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
 
-        assert n_envs == 1, "Replay buffer only support single environment for now"
-
         # Check that the replay buffer can fit into the memory
         if psutil is not None:
             mem_available = psutil.virtual_memory().available
@@ -188,8 +186,8 @@ class ReplayBuffer(BaseBuffer):
 
             if total_memory_usage > mem_available:
                 # Convert to GB
-                total_memory_usage /= 1e9
-                mem_available /= 1e9
+                total_memory_usage /= 2**30
+                mem_available /= 2**30
                 warnings.warn(
                     "This system does not have apparently enough memory to store the complete "
                     f"replay buffer {total_memory_usage:.2f}GB > {mem_available:.2f}GB"
@@ -197,15 +195,15 @@ class ReplayBuffer(BaseBuffer):
 
     def add(self, obs: np.ndarray, next_obs: np.ndarray, action: np.ndarray, reward: np.ndarray, done: np.ndarray) -> None:
         # Copy to avoid modification by reference
-        self.observations[self.pos] = np.array(obs).copy()
+        self.observations[self.pos] = np.array(obs)
         if self.optimize_memory_usage:
-            self.observations[(self.pos + 1) % self.buffer_size] = np.array(next_obs).copy()
+            self.observations[(self.pos + 1) % self.buffer_size] = np.array(next_obs)
         else:
-            self.next_observations[self.pos] = np.array(next_obs).copy()
+            self.next_observations[self.pos] = np.array(next_obs)
 
-        self.actions[self.pos] = np.array(action).copy()
-        self.rewards[self.pos] = np.array(reward).copy()
-        self.dones[self.pos] = np.array(done).copy()
+        self.actions[self.pos] = np.array(action)
+        self.rewards[self.pos] = np.array(reward)
+        self.dones[self.pos] = np.array(done)
 
         self.pos += 1
         if self.pos == self.buffer_size:
@@ -232,22 +230,27 @@ class ReplayBuffer(BaseBuffer):
             batch_inds = (np.random.randint(1, self.buffer_size, size=batch_size) + self.pos) % self.buffer_size
         else:
             batch_inds = np.random.randint(0, self.pos, size=batch_size)
-        return self._get_samples(batch_inds, env=env)
+        env_inds = np.random.randint(0, self.n_envs, size=batch_size)
+        return self._get_samples(batch_inds, env_inds, env=env)
 
-    def _get_samples(self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
+    def _get_samples(self, batch_inds: np.ndarray, env_inds: np.ndarray = None, env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
+        if env_inds is None:
+            env_inds = np.random.randint(0, self.n_envs, size=batch_inds.shape[0])
+
         if self.optimize_memory_usage:
-            next_obs = self._normalize_obs(self.observations[(batch_inds + 1) % self.buffer_size, 0, :], env)
+            next_obs = self._normalize_obs(self.observations[(batch_inds + 1) % self.buffer_size, env_inds, :], env)
         else:
-            next_obs = self._normalize_obs(self.next_observations[batch_inds, 0, :], env)
+            next_obs = self._normalize_obs(self.next_observations[batch_inds, env_inds, :], env)
 
         data = (
-            self._normalize_obs(self.observations[batch_inds, 0, :], env),
-            self.actions[batch_inds, 0, :],
+            self._normalize_obs(self.observations[batch_inds, env_inds, :], env),
+            self.actions[batch_inds, env_inds, :],
             next_obs,
-            self.dones[batch_inds],
-            self._normalize_reward(self.rewards[batch_inds], env),
+            self.dones[batch_inds, env_inds, np.newaxis],
+            self._normalize_reward(self.rewards[batch_inds, env_inds, np.newaxis], env),
         )
-        return ReplayBufferSamples(*tuple(map(self.to_torch, data)))
+        x =  ReplayBufferSamples(*tuple(map(self.to_torch, data)))
+        return x
 
 
 class RolloutBuffer(BaseBuffer):

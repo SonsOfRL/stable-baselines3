@@ -285,6 +285,8 @@ class BasePolicy(BaseModel):
         :return: (np.ndarray) Scaled action
         """
         low, high = self.action_space.low, self.action_space.high
+        low = np.expand_dims(low, axis=0)
+        high = np.expand_dims(high, axis=0)
         return 2.0 * ((action - low) / (high - low)) - 1.0
 
     def unscale_action(self, scaled_action: np.ndarray) -> np.ndarray:
@@ -295,6 +297,8 @@ class BasePolicy(BaseModel):
         :param scaled_action: Action to un-scale
         """
         low, high = self.action_space.low, self.action_space.high
+        low = np.expand_dims(low, axis=0)
+        high = np.expand_dims(high, axis=0)
         return low + (0.5 * (scaled_action + 1.0) * (high - low))
 
 

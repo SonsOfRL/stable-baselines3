@@ -89,7 +89,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         tensorboard_log: Optional[str] = None,
         verbose: int = 0,
         device: Union[th.device, str] = "auto",
-        support_multi_env: bool = False,
+        support_multi_env: bool = True,
         create_eval_env: bool = False,
         monitor_wrapper: bool = True,
         seed: Optional[int] = None,
@@ -152,6 +152,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             self.observation_space,
             self.action_space,
             self.device,
+            n_envs=self.env.num_envs,
             optimize_memory_usage=self.optimize_memory_usage,
         )
         self.policy = self.policy_class(
@@ -292,7 +293,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         # Select action randomly or according to policy
         if self.num_timesteps < learning_starts and not (self.use_sde and self.use_sde_at_warmup):
             # Warmup phase
-            unscaled_action = np.array([self.action_space.sample()])
+            unscaled_action = np.array([self.action_space.sample() for ix in range(self.env.num_envs)])
         else:
             # Note: when using continuous actions,
             # we assume that the policy uses tanh to scale the action
@@ -348,8 +349,8 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         self,
         env: VecEnv,
         callback: BaseCallback,
-        n_episodes: int = 1,
-        n_steps: int = -1,
+        n_episodes: int = -1,
+        n_steps: int = 1,
         action_noise: Optional[ActionNoise] = None,
         learning_starts: int = 0,
         replay_buffer: Optional[ReplayBuffer] = None,
@@ -377,88 +378,73 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         total_steps, total_episodes = 0, 0
 
         assert isinstance(env, VecEnv), "You must pass a VecEnv"
-        assert env.num_envs == 1, "OffPolicyAlgorithm only support single environment"
+        assert n_episodes < 0, "n_episodes is not supported in subprocenv"
+        assert n_episodes >0 or n_steps > 0, "Either n_steps or n_episodes must be given"
 
         if self.use_sde:
             self.actor.reset_noise()
 
         callback.on_rollout_start()
         continue_training = True
-
         while total_steps < n_steps or total_episodes < n_episodes:
-            done = False
-            episode_reward, episode_timesteps = 0.0, 0
 
-            while not done:
+            if self.use_sde and self.sde_sample_freq > 0 and total_steps % self.sde_sample_freq == 0:
+                # Sample a new noise matrix
+                self.actor.reset_noise()
 
-                if self.use_sde and self.sde_sample_freq > 0 and total_steps % self.sde_sample_freq == 0:
-                    # Sample a new noise matrix
-                    self.actor.reset_noise()
+            # Select action randomly or according to policy
+            action, buffer_action = self._sample_action(learning_starts, action_noise)
 
-                # Select action randomly or according to policy
-                action, buffer_action = self._sample_action(learning_starts, action_noise)
+            # Rescale and perform action
+            new_obs, reward, done, infos = fstep(action)
 
-                # Rescale and perform action
-                new_obs, reward, done, infos = env.step(action)
+            self.num_timesteps += env.num_envs
+            total_steps += env.num_envs
 
-                self.num_timesteps += 1
-                episode_timesteps += 1
-                total_steps += 1
+            # Give access to local variables
+            callback.update_locals(locals())
+            # Only stop training if return value is False, not when it is None.
+            if callback.on_step() is False:
+                return RolloutReturn(None, total_steps, total_episodes, continue_training=False)
 
-                # Give access to local variables
-                callback.update_locals(locals())
-                # Only stop training if return value is False, not when it is None.
-                if callback.on_step() is False:
-                    return RolloutReturn(0.0, total_steps, total_episodes, continue_training=False)
-
-                episode_reward += reward
-
-                # Retrieve reward and episode length if using Monitor wrapper
-                self._update_info_buffer(infos, done)
-
-                # Store data in replay buffer
-                if replay_buffer is not None:
-                    # Store only the unnormalized version
-                    if self._vec_normalize_env is not None:
-                        new_obs_ = self._vec_normalize_env.get_original_obs()
-                        reward_ = self._vec_normalize_env.get_original_reward()
-                    else:
-                        # Avoid changing the original ones
-                        self._last_original_obs, new_obs_, reward_ = self._last_obs, new_obs, reward
-
-                    replay_buffer.add(self._last_original_obs, new_obs_, buffer_action, reward_, done)
-
-                self._last_obs = new_obs
-                # Save the unnormalized observation
+            # Retrieve reward and episode length if using Monitor wrapper
+            self._update_info_buffer(infos, done)
+            # Store data in replay buffer
+            if replay_buffer is not None:
+                # Store only the unnormalized version
                 if self._vec_normalize_env is not None:
-                    self._last_original_obs = new_obs_
+                    new_obs_ = self._vec_normalize_env.get_original_obs()
+                    reward_ = self._vec_normalize_env.get_original_reward()
+                else:
+                    # Avoid changing the original ones
+                    self._last_original_obs, new_obs_, reward_ = self._last_obs, new_obs, reward
 
-                self._update_current_progress_remaining(self.num_timesteps, self._total_timesteps)
+                # TODO TOLGA TODO: Check for env dimension. Then modify the "add" method of the replayBuffer
+                replay_buffer.add(self._last_original_obs, new_obs_, buffer_action, reward_, done)
 
-                # For DQN, check if the target network should be updated
-                # and update the exploration schedule
-                # For SAC/TD3, the update is done as the same time as the gradient update
-                # see https://github.com/hill-a/stable-baselines/issues/900
-                self._on_step()
+            self._last_obs = new_obs
+            # Save the unnormalized observation
+            if self._vec_normalize_env is not None:
+                self._last_original_obs = new_obs_
 
-                if 0 < n_steps <= total_steps:
-                    break
+            self._update_current_progress_remaining(self.num_timesteps, self._total_timesteps)
 
-            if done:
-                total_episodes += 1
+            # For DQN, check if the target network should be updated
+            # and update the exploration schedule
+            # For SAC/TD3, the update is done as the same time as the gradient update
+            # see https://github.com/hill-a/stable-baselines/issues/900
+            self._on_step()
+
+            done_indexes = np.argwhere(done).flatten()
+            for ix in done_indexes:
                 self._episode_num += 1
-                episode_rewards.append(episode_reward)
-                total_timesteps.append(episode_timesteps)
-
-                if action_noise is not None:
-                    action_noise.reset()
-
                 # Log training infos
                 if log_interval is not None and self._episode_num % log_interval == 0:
                     self._dump_logs()
 
-        mean_reward = np.mean(episode_rewards) if total_episodes > 0 else 0.0
+            if action_noise is not None:
+                action_noise.reset(done_indexes)
 
         callback.on_rollout_end()
 
-        return RolloutReturn(mean_reward, total_steps, total_episodes, continue_training)
+        return RolloutReturn(None, total_steps, total_episodes, continue_training)
