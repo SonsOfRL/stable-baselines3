@@ -5,6 +5,8 @@ from gym import spaces
 import logging
 import numpy as np
 import random
+from pysc2.agents import base_agent
+
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +14,7 @@ logger = logging.getLogger(__name__)
 class BMEnv(SC2Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
-        'map_name': "CollectMineralAndGas",
+        'map_name': "BuildMarines",
         'players': [sc2_env.Agent(sc2_env.Race.terran)],
         'agent_interface_format': features.AgentInterfaceFormat(
             action_space=actions.ActionSpace.RAW,
@@ -25,11 +27,12 @@ class BMEnv(SC2Env):
         super().__init__()
         self.kwargs = kwargs
         self.env = None
-        self.SCVs = []
-        self.depot = []
-        self.cc = []
-        self.barracks = []
-        # 0 no operation
+
+
+        self._num_step = 0
+        self._episode_reward = 0
+
+    # 0 no operation
         # 1 harvest minerals
         # 2 train SCV's
         # 3 build supply depot
@@ -41,7 +44,7 @@ class BMEnv(SC2Env):
         self.observation_space = spaces.Box(
             low=0,
             high=64,
-            shape=(5 * 1,),
+            shape=(12 * 1,),
             dtype=np.uint8
         )
 
@@ -49,10 +52,7 @@ class BMEnv(SC2Env):
         if self.env is None:
             self.init_env()
 
-        self.SCVs = []
-        self.depot = []
-        self.cc = []
-        self.barracks = []
+
 
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
@@ -62,29 +62,51 @@ class BMEnv(SC2Env):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs):
-        obs = np.zeros((6, 1), dtype=np.uint8)
+        new_obs = np.zeros((12, 1), dtype=np.uint8)
         SCVs = self.get_units_by_type(raw_obs, units.Terran.SCV, 1)
         depots = self.get_units_by_type(raw_obs, units.Terran.SupplyDepot, 1)
+        completed_depots = self.get_my_completed_units_by_type(raw_obs, units.Terran.SupplyDepot)
         barracks = self.get_units_by_type(raw_obs, units.Terran.Barracks, 1)
+        completed_barracks = self.get_my_completed_units_by_type(raw_obs, units.Terran.Barracks)
 
-        obs[0] = len(SCVs)
-        obs[1] = len(depots)
-        obs[2] = len(barracks)
-        #obs[3] = (is scv produced ?)
-        #obs[4] = (how many marine production ?)
-        #obs[5] = (current minerals)
+        idle_scvs = [SCV for SCV in SCVs if SCV.order_length == 0]
+        queued_marines = (completed_barracks[0].order_length
+        if len(completed_barracks) > 0 else 0)
+        free_supply = (raw_obs.observation.player.food_cap -
+                                 raw_obs.observation.player.food_used)
+        can_afford_supply_depot = raw_obs.observation.player.minerals >= 100
+        can_afford_barracks = raw_obs.observation.player.minerals >= 150
+        can_afford_marine = raw_obs.observation.player.minerals >= 100
 
+        new_obs[0] = raw_obs.observation.minerals
+        new_obs[1] = len(SCVs)
+        new_obs[2] = len(depots)
+        new_obs[3] = len(completed_depots)
+        new_obs[4] = len(barracks)
+        new_obs[5] = len(completed_barracks)
+        new_obs[6] = len(idle_scvs)
+        new_obs[7] = free_supply
+        new_obs[8] = can_afford_supply_depot
+        new_obs[9] = can_afford_barracks
+        new_obs[10] = can_afford_marine
+        new_obs[11] = queued_marines
 
-
-        return obs.reshape(-1)
+        return new_obs.reshape(-1)
 
     def step(self, action):
         raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
-        return obs, reward, raw_obs.last(), {}
+        done = raw_obs.last()
 
-    def take_action(self, action, obs):
+        self._num_step += 1
+        self._episode_reward += reward
+        self._total_reward += reward
+
+        info = self.get_info() if done else {}
+        return obs, reward, done, info
+
+    def take_action(self, obs, action):
         if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
         elif action == 1:

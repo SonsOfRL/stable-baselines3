@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class CMGEnv(SC2Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
-        'map_name': "CollectMineralAndGas",
+        'map_name': "CollectMineralsAndGas",
         'players': [sc2_env.Agent(sc2_env.Race.terran)],
         'agent_interface_format': features.AgentInterfaceFormat(
             action_space=actions.ActionSpace.RAW,
@@ -66,8 +66,8 @@ class CMGEnv(SC2Env):
         args = {**self.default_settings, **self.kwargs}
         self.env = sc2_env.SC2Env(**args)
 
-    def get_derived_obs(self, raw_obs):
-        obs = np.zeros((11, 1), dtype=np.uint8)
+    def get_derived_obs(self, raw_obs, obs):
+
         SCVs = self.get_units_by_type(raw_obs, units.Terran.SCV, 1)
         idle_scvs = [scv for scv in SCVs if scv.order_length == 0]
         supply_depot = self.get_units_by_type(raw_obs, units.Terran.SupplyDepot, 1)
