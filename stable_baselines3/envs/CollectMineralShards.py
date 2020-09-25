@@ -65,7 +65,7 @@ class CMSEnv(SC2Env):
         marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
         self.marines = []
 
-        minerals = [[unit.x, unit.y] for unit in obs.observation.feature_units
+        minerals = [[unit.x, unit.y] for unit in raw_obs.observation.feature_units
                     if unit.alliance == _PLAYER_NEUTRAL]
 
         for i, Marine in enumerate(marines):

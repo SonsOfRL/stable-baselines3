@@ -58,12 +58,12 @@ class MTBEnv(SC2Env):
         args = {**self.default_settings, **self.kwargs}
         self.env = sc2_env.SC2Env(**args)
 
-    def get_derived_obs(self, raw_obs, obs):
+    def get_derived_obs(self, raw_obs):
         _PLAYER_NEUTRAL = features.PlayerRelative.NEUTRAL
         # player_relative = obs.observation.feature_screen.player_relative
         # beacon = self._xy_locs(player_relative == _PLAYER_NEUTRAL)
 
-        beacon = [[unit.x, unit.y] for unit in obs.observation.feature_screen.player_relative
+        beacon = [[unit.x, unit.y] for unit in raw_obs.observation.feature_screen.player_relative
                   if unit.alliance == _PLAYER_NEUTRAL]
 
         marine = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)

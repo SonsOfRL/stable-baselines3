@@ -66,42 +66,30 @@ class CMGEnv(SC2Env):
         args = {**self.default_settings, **self.kwargs}
         self.env = sc2_env.SC2Env(**args)
 
-    def get_derived_obs(self, raw_obs, obs):
+    def get_derived_obs(self, raw_obs):
 
         SCVs = self.get_units_by_type(raw_obs, units.Terran.SCV, 1)
         idle_scvs = [scv for scv in SCVs if scv.order_length == 0]
         supply_depot = self.get_units_by_type(raw_obs, units.Terran.SupplyDepot, 1)
         command_center = self.get_units_by_type(raw_obs, units.Terran.CommandCenter, 1)
         refinery = self.get_units_by_type(raw_obs, units.Terran.Refinery, 1)
-        minerals = obs.observation.player.minerals
-        free_supply =(obs.observation.player.food_cap -
-                       obs.observation.player.food_used)
+        minerals = raw_obs.observation.player.minerals
+        free_supply =(raw_obs.observation.player.food_cap -
+                       raw_obs.observation.player.food_used)
+        can_afford_supply_depot = raw_obs.observation.player.minerals >= 100
+        can_afford_barracks = raw_obs.observation.player.minerals >= 150
+        can_afford_marine = raw_obs.observation.player.minerals >= 100
+        can_afford_refinery = raw_obs.observation.player.minerals >= 75
 
+        obs = np.zeros((11, 1), dtype=np.uint8)
         obs[0] = len(SCVs)
         obs[1] = len(supply_depot)
         obs[2] = len(command_center)
         obs[3] = len(refinery)
-
-        if obs.observation.player.minerals >= 50: # can afford SCV ?
-            obs[4] = 1
-        else:
-            obs[4] = 0
-
-        if obs.observation.player.minerals >= 100: # can afford depot ?
-            obs[5] = 1
-        else:
-            obs[5] = 0
-
-        if obs.observation.player.minerals >= 400: # can afford command center?
-            obs[6] = 1
-        else:
-            obs[6] = 0
-
-        if obs.observation.player.minerals >= 75: # can afford refinery ?
-            obs[7] = 1
-        else:
-            obs[7] = 0
-
+        obs[4] = can_afford_barracks
+        obs[5] = can_afford_supply_depot
+        obs[6] = can_afford_marine
+        obs[7] = can_afford_refinery
         obs[8] = minerals
         obs[9] = free_supply
         obs[10] = idle_scvs
@@ -119,22 +107,22 @@ class CMGEnv(SC2Env):
         # each step will set the dictionary to emtpy
         return obs, reward, done, info
 
-    def take_action(self, action):
+    def take_action(self, obs, action):
 
         if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
         elif action == 1:
-            action_mapped = self.train_scv()
+            action_mapped = self.train_scv(obs)
         elif action == 2:
-            action_mapped = self.harvest_minerals()
+            action_mapped = self.harvest_minerals(obs)
         elif action == 3:
-            action_mapped = self.build_supply_depot()
+            action_mapped = self.build_supply_depot(obs)
         elif action == 4:
-            action_mapped = self.build_refinery()
+            action_mapped = self.build_refinery(obs)
         elif action == 5:
-            action_mapped = self.build_command_center()
+            action_mapped = self.build_command_center(obs)
         elif action == 6:
-            action_mapped = self.harvest_gas()
+            action_mapped = self.harvest_gas(obs)
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
