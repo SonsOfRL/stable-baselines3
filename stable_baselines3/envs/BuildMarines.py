@@ -92,7 +92,7 @@ class BMEnv(SC2Env):
         return new_obs.reshape(-1)
 
     def step(self, action):
-        obs = self.env.step(self.do_nothing())[0]
+        obs = self.env.step([self.do_nothing()])[0]
         raw_obs = self.take_action(obs, action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
