@@ -92,7 +92,7 @@ class CMGEnv(SC2Env):
         obs[7] = can_afford_refinery
         obs[8] = minerals
         obs[9] = free_supply
-        obs[10] = idle_scvs
+        obs[10] = len(idle_scvs)
         return obs.reshape(-1)
 
     def step(self, action):
