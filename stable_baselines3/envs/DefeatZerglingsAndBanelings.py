@@ -38,7 +38,7 @@ class DZBEnv(SC2Env):
         self.observation_space = spaces.Box(
             low=0,
             high=64,
-            shape=(19 * 3,),
+            shape=(150,),
             dtype=np.uint8
         )
         self._num_step = 0
@@ -65,7 +65,7 @@ class DZBEnv(SC2Env):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs):
-        obs = np.zeros((19, 3), dtype=np.uint8)
+        obs = np.zeros((50, 3), dtype=np.uint8)
         marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
         zerglings = self.get_units_by_type(raw_obs, units.Zerg.Zergling, 4)
         banelings = self.get_units_by_type(raw_obs, units.Zerg.Baneling, 4)

@@ -31,7 +31,7 @@ class BMEnv(SC2Env):
 
         self._num_step = 0
         self._episode_reward = 0
-
+        self._total_reward = 0
     # 0 no operation
         # 1 harvest minerals
         # 2 train SCV's
@@ -51,8 +51,6 @@ class BMEnv(SC2Env):
     def reset(self):
         if self.env is None:
             self.init_env()
-
-
 
         raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
@@ -78,7 +76,7 @@ class BMEnv(SC2Env):
         can_afford_barracks = raw_obs.observation.player.minerals >= 150
         can_afford_marine = raw_obs.observation.player.minerals >= 100
 
-        new_obs[0] = raw_obs.observation.minerals
+        new_obs[0] = raw_obs.observation.player.minerals
         new_obs[1] = len(SCVs)
         new_obs[2] = len(depots)
         new_obs[3] = len(completed_depots)
@@ -94,7 +92,8 @@ class BMEnv(SC2Env):
         return new_obs.reshape(-1)
 
     def step(self, action):
-        raw_obs = self.take_action(action)
+        obs = self.env.step(self.do_nothing())[0]
+        raw_obs = self.take_action(obs, action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
         done = raw_obs.last()
@@ -122,6 +121,9 @@ class BMEnv(SC2Env):
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
+
+    def do_nothing(self):
+        return actions.RAW_FUNCTIONS.no_op()
 
     def get_distances(self, obs, units, xy):
         units_xy = [(unit.x, unit.y) for unit in units]

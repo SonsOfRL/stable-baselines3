@@ -96,7 +96,8 @@ class CMGEnv(SC2Env):
         return obs.reshape(-1)
 
     def step(self, action):
-        raw_obs = self.take_action(action)
+        obs = self.env.step(self.do_nothing())[0]
+        raw_obs = self.take_action(obs, action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
         self._num_step += 1
@@ -126,6 +127,9 @@ class CMGEnv(SC2Env):
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
+
+    def do_nothing(self):
+        return actions.RAW_FUNCTIONS.no_op()
 
     def get_distances(self, obs, units, xy):
         units_xy = [(unit.x, unit.y) for unit in units]
