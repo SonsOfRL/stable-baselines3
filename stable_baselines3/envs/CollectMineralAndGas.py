@@ -42,7 +42,7 @@ class CMGEnv(SC2Env):
         self.observation_space = spaces.Box(
             low=0,
             high=64,
-            shape=(11 * 1),
+            shape=(11 * 1,),
             dtype=np.uint8
         )
 
