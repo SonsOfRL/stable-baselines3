@@ -25,6 +25,8 @@ class CMSEnv(SC2Env):
         self.kwargs = kwargs
         self.env = None
         self.marines = []
+        self.minerals = []
+
         self._num_step = 0
         self._episode_reward = 0
         self._episode = 0
@@ -46,7 +48,7 @@ class CMSEnv(SC2Env):
             self.init_env()
 
         self.marines = []
-
+        self.minerals = []
         self._episode += 1
         self._num_step = 0
         self._episode_reward = 0
@@ -65,7 +67,7 @@ class CMSEnv(SC2Env):
         marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
         self.marines = []
 
-        minerals = [[unit.x, unit.y] for unit in raw_obs.observation.feature_units
+        minerals = [[unit.x, unit.y] for unit in raw_obs.observation.raw_units
                     if unit.alliance == _PLAYER_NEUTRAL]
 
         for i, Marine in enumerate(marines):
@@ -73,7 +75,7 @@ class CMSEnv(SC2Env):
             obs[i] = np.array([Marine.x, Marine.y])
 
         for i, mineral in enumerate(minerals):
-            self.marines.append(mineral)
+            self.minerals.append(mineral)
             obs[i+2] = minerals[i]
         return obs.reshape(-1)
 
