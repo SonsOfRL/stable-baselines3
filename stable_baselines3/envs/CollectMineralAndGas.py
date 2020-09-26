@@ -178,8 +178,7 @@ class CMGEnv(SC2Env):
                                    units.Neutral.RichMineralField750
                                ]]
             scv = random.choice(idle_scvs)
-            distances = self.get_distances(obs, mineral_patches, (scv.x, scv.y))
-            mineral_patch = mineral_patches[np.argmin(distances)]
+            mineral_patch = random.choice(mineral_patches)
             return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
                 "now", scv.tag, mineral_patch.tag)
         return actions.RAW_FUNCTIONS.no_op()
@@ -190,8 +189,7 @@ class CMGEnv(SC2Env):
             x = random.randint(0, 64)
             y = random.randint(0, 64)
             supply_depot_xy = (x, y)
-            distances = self.get_distances(obs, scvs, supply_depot_xy)
-            scv = scvs[np.argmin(distances)]
+            scv = random.choice(scvs)
             return actions.RAW_FUNCTIONS.Build_SupplyDepot_pt(
                 "now", scv.tag, supply_depot_xy)
         return actions.RAW_FUNCTIONS.no_op()
@@ -224,8 +222,7 @@ class CMGEnv(SC2Env):
                        units.Neutral.VespeneGeyser,
                    ]]
         scv = random.choice(scvs)
-        distances = self.get_distances(obs, geysers, (scv.x, scv.y))
-        geyser = geysers[np.argmin(distances)]
+        geyser = random.choice(geysers)
         return actions.RAW_FUNCTIONS.Build_Refinery_pt(
                 "now", scv.tag, (geyser.x, geyser.y))
 

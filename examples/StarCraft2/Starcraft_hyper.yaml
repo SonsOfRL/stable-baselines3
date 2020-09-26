@@ -3,7 +3,7 @@ starcraft:
       envname: DefeatRoaches-v0
       env:
         seed: 450
-        n_envs: 30
+        n_envs: 2
       framestack:
         n_stack: 4
       agent:

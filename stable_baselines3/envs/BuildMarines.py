@@ -172,8 +172,7 @@ class BMEnv(SC2Env):
                                    units.Neutral.RichMineralField750
                                ]]
             scv = random.choice(idle_scvs)
-            distances = self.get_distances(obs, mineral_patches, (scv.x, scv.y))
-            mineral_patch = mineral_patches[np.argmin(distances)]
+            mineral_patch = random.choice(mineral_patches)
             return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
                 "now", scv.tag, mineral_patch.tag)
         return actions.RAW_FUNCTIONS.no_op()
@@ -184,8 +183,8 @@ class BMEnv(SC2Env):
             x = random.randint(0, 64)
             y = random.randint(0, 64)
             supply_depot_xy = (x, y)
-            distances = self.get_distances(obs, scvs, supply_depot_xy)
-            scv = scvs[np.argmin(distances)]
+
+            scv = random.choice(scvs)
             return actions.RAW_FUNCTIONS.Build_SupplyDepot_pt(
                 "now", scv.tag, supply_depot_xy)
         return actions.RAW_FUNCTIONS.no_op()
@@ -199,8 +198,7 @@ class BMEnv(SC2Env):
             x = random.randint(0, 64)
             y = random.randint(0, 64)
             barracks_xy = (x, y)
-            distances = self.get_distances(obs, scvs, barracks_xy)
-            scv = scvs[np.argmin(distances)]
+            scv = random.choice(scvs)
             return actions.RAW_FUNCTIONS.Build_Barracks_pt(
                 "now", scv.tag, barracks_xy)
         return actions.RAW_FUNCTIONS.no_op()
