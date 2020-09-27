@@ -74,7 +74,7 @@ class CMGEnv(SC2Env):
         command_center = self.get_units_by_type(raw_obs, units.Terran.CommandCenter, 1)
         refinery = self.get_units_by_type(raw_obs, units.Terran.Refinery, 1)
         minerals = raw_obs.observation.player.minerals
-        free_supply =(raw_obs.observation.player.food_cap -
+        free_supply = (raw_obs.observation.player.food_cap -
                        raw_obs.observation.player.food_used)
         can_afford_supply_depot = raw_obs.observation.player.minerals >= 100
         can_afford_barracks = raw_obs.observation.player.minerals >= 150
@@ -224,7 +224,7 @@ class CMGEnv(SC2Env):
         scv = random.choice(scvs)
         geyser = random.choice(geysers)
         return actions.RAW_FUNCTIONS.Build_Refinery_pt(
-                "now", scv.tag, (geyser.x, geyser.y))
+            "now", scv.tag, (geyser.x, geyser.y))
 
     def harvest_gas(self, obs):
         scvs = self.get_my_completed_units_by_type(obs, units.Terran.SCV)

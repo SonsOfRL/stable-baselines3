@@ -37,7 +37,7 @@ class DREnv(SC2Env):
         # [0: x, 1: y, 2: hp]
         self.observation_space = spaces.Box(
             low=0,
-            high=64,
+            high=150,
             shape=(150,),
             dtype=np.uint8
         )
