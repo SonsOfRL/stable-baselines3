@@ -1,5 +1,6 @@
 import gym
 import numpy as np
+import argparse
 
 from stable_baselines3 import DDPG, TD3
 from stable_baselines3.common.noise import (NormalActionNoise,
@@ -26,7 +27,6 @@ class LoggerCallback(BaseCallback):
 
         _logger = self.globals["logger"].Logger.CURRENT
         _dir = _logger.dir
-        _dir = "logs/"
         log_format = logger.make_output_format(self._format, _dir, self.suffix)
         _logger.output_formats.append(log_format)
         if self.log_on_start is not None:
@@ -40,43 +40,51 @@ class LoggerCallback(BaseCallback):
         return True
 
 
-def main():
-    env_name = "LunarLanderContinuous-v2"
+def main(train_freq, gradient_steps, batch_size, envname, n_envs, log_interval):
+    envname = "LunarLanderContinuous-v2"
 
-    env = gym.make(env_name)
-    vecenv = make_vec_env(env_name, vec_env_cls=SubprocVecEnv, n_envs=2)
+    env = gym.make(envname)
+    vecenv = make_vec_env(envname, vec_env_cls=SubprocVecEnv, n_envs=n_envs)
 
     # The noise objects for DDPG
     n_actions = env.action_space.shape[-1]
-    action_noise = OrnsteinUhlenbeckActionNoise(
+    base_noise = OrnsteinUhlenbeckActionNoise(
         mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
-    action_noise = VectorizedActionNoise(action_noise, n_envs=vecenv.num_envs)
+    action_noise = VectorizedActionNoise(base_noise, vecenv.num_envs)
 
     policy_kwargs = {
-        "actor_arch": [32],
-        "critic_arch": [300, 400],
+        # "actor_arch": [32],
+        # "critic_arch": [300, 400],
+        "net_arch": [300, 400]
     }
 
     loggcallback = LoggerCallback("json")
 
     model = TD3("MlpPolicy",
                 vecenv,
-                buffer_size=int(1e5) // vecenv.num_envs,
-                batch_size=32,
-                train_freq=1,
-                gradient_steps=1,
-                n_episodes_rollout=-1,
-                learning_rate=1e-3,
                 action_noise=action_noise,
-                policy_kwargs=policy_kwargs,
+                batch_size=batch_size,
+                train_freq=train_freq,
+                gradient_steps=gradient_steps,
+                learning_starts=100,
+                n_episodes_rollout=-1,
                 verbose=1,
-                tensorboard_log="logs/",
+                policy_kwargs=policy_kwargs,
+                tensorboard_log="logs_baseline/",
                 device="cuda")
-    model.learn(total_timesteps=10000,
-                log_interval=5,
+    model.learn(total_timesteps=100000,
+                log_interval=log_interval,
                 callback=loggcallback,
-                tb_log_name=env_name,)
+                tb_log_name=envname,)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--train-freq", help="Number of environment steps between each update loop", default="1", type=int, required=False)
+    parser.add_argument("--gradient-steps", help="Update steps per rollout call", default="1", type=int, required=False)
+    parser.add_argument("--batch_size", help="Batchsize of each update", default="32", type=int, required=False)
+    parser.add_argument("--envname", help="Gym environment", default="LunarLanderContinuous-v2", type=str, required=False)
+    parser.add_argument("--n_envs", help="Parallel environments in synch rollout gathering", default="1", type=int, required=False)
+    parser.add_argument("--log_interval", help="Logging interval between update calls", default=5, type=int)
+    kwargs = vars(parser.parse_args())
+    main(**kwargs)

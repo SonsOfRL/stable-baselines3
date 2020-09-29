@@ -74,7 +74,8 @@ class Actor(BasePolicy):
     def forward(self, obs: th.Tensor, deterministic: bool = True) -> th.Tensor:
         # assert deterministic, 'The TD3 actor only outputs deterministic actions'
         features = self.extract_features(obs)
-        return self.mu(features), self._flatten_params()
+        batch_size = features.shape[0]
+        return self.mu(features), self._flatten_params().repeat(batch_size, 1)
 
     def _predict(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
         return self.forward(observation, deterministic=deterministic)
