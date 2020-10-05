@@ -53,6 +53,10 @@ class BMEnv(SC2Env):
             self.init_env()
 
         raw_obs = self.env.reset()[0]
+
+        self._episode += 1
+        self._num_step = 0
+        self._episode_reward = 0
         return self.get_derived_obs(raw_obs)
 
     def init_env(self):
@@ -178,7 +182,7 @@ class BMEnv(SC2Env):
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_supply_depot(self, obs):
-        scvs = self.get_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_units_by_type(obs, units.Terran.SCV)
         if obs.observation.player.minerals >= 100:
             x = random.randint(0, 64)
             y = random.randint(0, 64)
@@ -208,15 +212,15 @@ class BMEnv(SC2Env):
             obs, units.Terran.Barracks)
         free_supply = (obs.observation.player.food_cap -
                        obs.observation.player.food_used)
-        if (len(completed_barrackses) > 0 and obs.observation.player.minerals >= 100
+        if (len(completed_barrackses) > 0 and obs.observation.player.minerals >= 50
                 and free_supply > 0):
-            for b in range(len(completed_barrackses)):
-                barracks = self.get_my_units_by_type(obs, units.Terran.Barracks)[b]
+            for b in range(len(completed_barrackses)-1):
+                barracks = self.get_my_completed_units_by_type(obs, units.Terran.Barracks)[b]
                 if barracks.order_length < 1:
                     return actions.RAW_FUNCTIONS.Train_Marine_quick("now", barracks.tag)
 
-            x = random.randint(0, len(completed_barrackses))
-            barracks = self.get_my_units_by_type(obs, units.Terran.Barracks)[x]
+            x = random.randint(0, len(completed_barrackses)-1)
+            barracks = self.get_my_completed_units_by_type(obs, units.Terran.Barracks)[x]
             if barracks.order_length < 5:
                 return actions.RAW_FUNCTIONS.Train_Marine_quick("now", barracks.tag)
         return actions.RAW_FUNCTIONS.no_op()

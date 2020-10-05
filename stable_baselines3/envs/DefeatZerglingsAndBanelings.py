@@ -43,6 +43,7 @@ class DZBEnv(SC2Env):
         )
         self._num_step = 0
         self._episode_reward = 0
+        self._total_reward = 0
 
     def reset(self):
         if self.env is None:
