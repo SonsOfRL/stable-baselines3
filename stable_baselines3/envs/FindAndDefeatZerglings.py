@@ -32,9 +32,9 @@ class FDZEnv(SC2Env):
         self._episode = 0
 
         # 0 no operation
-        # 1~32 move
-        # 33~122 attack
-        self.action_space = spaces.Discrete(123)
+        # 1-4096 attack move selected coordinate
+        self.action_space = spaces.Discrete(4097)
+
         # [0: x, 1: y, 2: hp]
         self.observation_space = spaces.Box(
             low=0,
@@ -103,67 +103,38 @@ class FDZEnv(SC2Env):
                 and unit.alliance == features.PlayerRelative.ENEMY]
 
     def take_action(self, action):
-        if action == 0:
-            action_mapped = actions.RAW_FUNCTIONS.no_op()
-        elif action <= 12:
-            derived_action = np.floor((action - 1) / 3)
-            idx = (action - 1) % 3
-            if derived_action == 0:
-                action_mapped = self.move_up(idx)
-            elif derived_action == 1:
-                action_mapped = self.move_down(idx)
-            elif derived_action == 2:
-                action_mapped = self.move_left(idx)
-            else:
-                action_mapped = self.move_right(idx)
-        else:
-            eidx = np.floor((action - 13) / 9)          #TODO this attack function is so bad it may hurt the training
-            aidx = (action - 13) % 9
-            action_mapped = self.attack(aidx, eidx)
+        obs = self.env.step([self.do_nothing()])[0]
+        x = np.floor((action - 1) / 64)
+        y = (action - 1) % 64
+        action_mapped = self.attack_move(obs, x, y)
+
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
 
-    def move_up(self, idx):
-        idx = np.floor(idx)
-        try:
-            selected = self.marines[idx]
-            new_pos = [selected.x, selected.y - 2]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
+    def attack_move(self, obs,  x, y):
+        try:                         #TODO SELECT ALL ARMY
+            marines = self.get_my_units_by_type(obs, units.Terran.Marine)
+            target = (x, y)
+
+            distances = self.get_distances(marines, target)
+            marine = marines[np.argmax(distances)]
+
+            return actions.RAW_FUNCTIONS.Attack_pt("now", marine.tag, target)
         except:
             return actions.RAW_FUNCTIONS.no_op()
 
-    def move_down(self, idx):
-        try:
-            selected = self.marines[idx]
-            new_pos = [selected.x, selected.y + 2]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
+    def do_nothing(self):
+        return actions.RAW_FUNCTIONS.no_op()
 
-    def move_left(self, idx):
-        try:
-            selected = self.marines[idx]
-            new_pos = [selected.x - 2, selected.y]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
+    def get_distances(self, units, xy):
+        units_xy = [(unit.x, unit.y) for unit in units]
+        return np.linalg.norm(np.array(units_xy) - np.array(xy), axis=1)
 
-    def move_right(self, idx):
-        try:
-            selected = self.marines[idx]
-            new_pos = [selected.x + 2, selected.y]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
-
-    def attack(self, aidx, eidx):
-        try:
-            selected = self.marines[aidx]
-            target = self.zerglings[eidx]
-            return actions.RAW_FUNCTIONS.Attack_unit("now", selected.tag, target.tag)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
+    def get_my_units_by_type(self, obs, unit_type):
+        return [unit for unit in obs.observation.raw_units
+                if unit.unit_type == unit_type
+                and unit.alliance == features.PlayerRelative.SELF]
 
     def get_units_by_type(self, obs, unit_type, player_relative=0):
         """
