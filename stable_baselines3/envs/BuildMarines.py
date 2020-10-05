@@ -157,7 +157,7 @@ class BMEnv(SC2Env):
                 and unit.alliance == features.PlayerRelative.SELF]
 
     def harvest_minerals(self, obs):
-        scvs = self.get_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_completed_units_by_type(obs, units.Terran.SCV)
         idle_scvs = [scv for scv in scvs if scv.order_length == 0]
         if len(idle_scvs) > 0:
             mineral_patches = [unit for unit in obs.observation.raw_units
@@ -182,7 +182,7 @@ class BMEnv(SC2Env):
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_supply_depot(self, obs):
-        scvs = self.get_my_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_completed_units_by_type(obs, units.Terran.SCV)
         if obs.observation.player.minerals >= 100:
             x = random.randint(0, 64)
             y = random.randint(0, 64)
@@ -196,7 +196,7 @@ class BMEnv(SC2Env):
     def build_barracks(self, obs):
         completed_supply_depots = self.get_my_completed_units_by_type(
             obs, units.Terran.SupplyDepot)
-        scvs = self.get_my_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_completed_units_by_type(obs, units.Terran.SCV)
         if (len(completed_supply_depots) > 0 and
                 obs.observation.player.minerals >= 150 and len(scvs) > 0):
             x = random.randint(0, 64)

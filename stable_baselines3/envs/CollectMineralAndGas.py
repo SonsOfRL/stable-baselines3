@@ -159,7 +159,7 @@ class CMGEnv(SC2Env):
                 and unit.alliance == features.PlayerRelative.SELF]
 
     def harvest_minerals(self, obs):
-        scvs = self.get_my_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_completed_units_by_type(obs, units.Terran.SCV)
         idle_scvs = [scv for scv in scvs if scv.order_length == 0]
         if len(idle_scvs) > 0:
             mineral_patches = [unit for unit in obs.observation.raw_units
@@ -184,11 +184,12 @@ class CMGEnv(SC2Env):
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_supply_depot(self, obs):
-        scvs = self.get_my_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_completed_units_by_type(obs, units.Terran.SCV)
         if obs.observation.player.minerals >= 100:
             x = random.randint(0, 64)
             y = random.randint(0, 64)
             supply_depot_xy = (x, y)
+
             scv = random.choice(scvs)
             return actions.RAW_FUNCTIONS.Build_SupplyDepot_pt(
                 "now", scv.tag, supply_depot_xy)
@@ -201,14 +202,15 @@ class CMGEnv(SC2Env):
                        obs.observation.player.food_used)
         if (len(completed_command_center) > 0 and obs.observation.player.minerals >= 50
                 and free_supply > 0):
-            for cc in range(len(completed_command_center)):
-                command_center = self.get_my_units_by_type(obs, units.Terran.Barracks)[cc]
+            for cc in range(len(completed_command_center)-1):
+                command_center = self.get_my_completed_units_by_type(obs, units.Terran.CommandCenter)[cc]
+
+                if command_center.order_length == 5:
+                    return actions.RAW_FUNCTIONS.no_op()
+
                 if command_center.order_length < 1:
-                    return actions.RAW_FUNCTIONS.Train_Marine_quick("now", command_center.tag)
-            x = random.randint(0, len(completed_command_center))
-            command_center = self.get_my_units_by_type(obs, units.Terran.CommandCenter)[x]
-            if command_center.order_length < 5:
-                return actions.RAW_FUNCTIONS.Train_SCV_quick("now", command_center.tag)
+                    return actions.RAW_FUNCTIONS.Train_SCV_quick("now", command_center.tag)
+
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_refinery(self, obs):
@@ -224,24 +226,25 @@ class CMGEnv(SC2Env):
         scv = random.choice(scvs)
         geyser = random.choice(geysers)
         return actions.RAW_FUNCTIONS.Build_Refinery_pt(
-            "now", scv.tag, (geyser.x, geyser.y))
+            "now", scv.tag, geyser.tag)
 
     def harvest_gas(self, obs):
         scvs = self.get_my_completed_units_by_type(obs, units.Terran.SCV)
+        idle_scvs = [scv for scv in scvs if scv.order_length == 0]
         refineries = self.get_my_completed_units_by_type(obs, units.Terran.Refinery)
-        if len(refineries) > 0:
+        if len(refineries) > 0 and len(idle_scvs) > 0:
             refinery = random.choice(refineries)
-            if refinery.features.FeatureUnit.ideal_harvesters > refinery.features.FeatureUnit.assigned_harvesters:
-                scv = random.choice(scvs)
-                return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
+            #if refinery.features.FeatureUnit.ideal_harvesters > refinery.features.FeatureUnit.assigned_harvesters: #This resulted in bad attribute name "features"
+            scv = random.choice(idle_scvs)    #TODO random SCV can be already inside geyser, make this scv close to mineral patches
+            return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
                     "now", scv.tag, refinery.tag)
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_command_center(self, obs):
-        scvs = self.get_my_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_completed_units_by_type(obs, units.Terran.SCV)
         completed_command_center = self.get_my_completed_units_by_type(
             obs, units.Terran.CommandCenter)
-        cc_location = [completed_command_center[0].x, completed_command_center[0].y]
+
         if len(completed_command_center) == 1 and obs.observation.player.minerals >= 400:
             command_center_xy = [completed_command_center[0].x + 5, completed_command_center[0].y]
             # distances = self.get_distances(obs, scvs, command_center_xy)
