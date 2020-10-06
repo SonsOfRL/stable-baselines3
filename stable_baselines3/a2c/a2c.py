@@ -57,6 +57,8 @@ class A2C(OnPolicyAlgorithm):
         env: Union[GymEnv, str],
         learning_rate: Union[float, Callable] = 7e-4,
         n_steps: int = 5,
+        batch_size: int = None,
+        epochs: int = 1,
         gamma: float = 0.99,
         gae_lambda: float = 1.0,
         ent_coef: float = 0.0,
@@ -75,7 +77,9 @@ class A2C(OnPolicyAlgorithm):
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
     ):
-
+        self.epochs = epochs
+        self.n_minibatch = 0
+        self.batch_size = batch_size
         super(A2C, self).__init__(
             policy,
             env,
@@ -117,49 +121,52 @@ class A2C(OnPolicyAlgorithm):
         self._update_learning_rate(self.policy.optimizer)
 
         # This will only loop once (get all data in one go)
-        for rollout_data in self.rollout_buffer.get(batch_size=None):
+        for iy in range(self.epochs):
+            for rollout_data in self.rollout_buffer.get(batch_size=self.batch_size):
 
-            actions = rollout_data.actions
-            if isinstance(self.action_space, spaces.Discrete):
-                # Convert discrete action from float to long
-                actions = actions.long().flatten()
+                actions = rollout_data.actions
+                if isinstance(self.action_space, spaces.Discrete):
+                    # Convert discrete action from float to long
+                    actions = actions.long().flatten()
 
-            # TODO: avoid second computation of everything because of the gradient
-            values, log_prob, entropy = self.policy.evaluate_actions(rollout_data.observations, actions)
-            values = values.flatten()
+                # TODO: avoid second computation of everything because of the gradient
+                values, log_prob, entropy = self.policy.evaluate_actions(rollout_data.observations, actions)
+                values = values.flatten()
 
-            # Normalize advantage (not present in the original implementation)
-            advantages = rollout_data.advantages
-            if self.normalize_advantage:
-                advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+                # Normalize advantage (not present in the original implementation)
+                advantages = rollout_data.advantages
+                if self.normalize_advantage:
+                    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-            # Policy gradient loss
-            policy_loss = -(advantages * log_prob).mean()
+                # Policy gradient loss
+                policy_loss = -(advantages * log_prob).mean()
 
-            # Value loss using the TD(gae_lambda) target
-            value_loss = F.mse_loss(rollout_data.returns, values)
+                # Value loss using the TD(gae_lambda) target
+                value_loss = F.mse_loss(rollout_data.returns, values)
 
-            # Entropy loss favor exploration
-            if entropy is None:
-                # Approximate entropy when no analytical form
-                entropy_loss = -th.mean(-log_prob)
-            else:
-                entropy_loss = -th.mean(entropy)
+                # Entropy loss favor exploration
+                if entropy is None:
+                    # Approximate entropy when no analytical form
+                    entropy_loss = -th.mean(-log_prob)
+                else:
+                    entropy_loss = -th.mean(entropy)
 
-            loss = policy_loss + self.ent_coef * entropy_loss + self.vf_coef * value_loss
+                loss = policy_loss + self.ent_coef * entropy_loss + self.vf_coef * value_loss
 
-            # Optimization step
-            self.policy.optimizer.zero_grad()
-            loss.backward()
+                # Optimization step
+                self.policy.optimizer.zero_grad()
+                loss.backward()
 
-            # Clip grad norm
-            th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
-            self.policy.optimizer.step()
+                # Clip grad norm
+                th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                self.policy.optimizer.step()
+                self.n_minibatch += 1
 
         explained_var = explained_variance(self.rollout_buffer.returns.flatten(), self.rollout_buffer.values.flatten())
-
         self._n_updates += 1
+
         logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
+        logger.record("train/n_minibatch", self.n_minibatch, exclude="tensorboard")
         logger.record("train/explained_variance", explained_var)
         logger.record("train/entropy_loss", entropy_loss.item())
         logger.record("train/policy_loss", policy_loss.item())
