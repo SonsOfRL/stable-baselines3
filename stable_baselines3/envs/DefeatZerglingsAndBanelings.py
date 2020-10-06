@@ -14,8 +14,7 @@ class DZBEnv(SC2Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "DefeatZerglingsAndBanelings",
-        'players': [sc2_env.Agent(sc2_env.Race.terran),
-                    sc2_env.Bot(sc2_env.Race.zerg, sc2_env.Difficulty.hard)],
+        'players': [sc2_env.Agent(sc2_env.Race.terran)],
         'agent_interface_format': features.AgentInterfaceFormat(
             action_space=actions.ActionSpace.RAW,
             use_raw_units=True,

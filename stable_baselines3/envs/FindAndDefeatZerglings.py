@@ -12,8 +12,7 @@ class FDZEnv(SC2Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "FindAndDefeatZerglings",
-        'players': [sc2_env.Agent(sc2_env.Race.terran),
-                    sc2_env.Bot(sc2_env.Race.zerg, sc2_env.Difficulty.hard)],
+        'players': [sc2_env.Agent(sc2_env.Race.terran)],
         'agent_interface_format': features.AgentInterfaceFormat(
             action_space=actions.ActionSpace.RAW,
             use_raw_units=True,
@@ -86,7 +85,8 @@ class FDZEnv(SC2Env):
         return obs.reshape(-1)
 
     def step(self, action):
-        raw_obs = self.take_action(action)
+        obs = self.env.step([self.do_nothing()])[0]
+        raw_obs = self.take_action(obs, action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
         self._num_step += 1
@@ -102,8 +102,8 @@ class FDZEnv(SC2Env):
                 if unit.unit_type == unit_type
                 and unit.alliance == features.PlayerRelative.ENEMY]
 
-    def take_action(self, action):
-        obs = self.env.step([self.do_nothing()])[0]
+    def take_action(self,obs, action):
+        #obs = self.env.step([self.do_nothing()])[0]
         x = np.floor((action - 1) / 64)
         y = (action - 1) % 64
         action_mapped = self.attack_move(obs, x, y)

@@ -12,8 +12,7 @@ class DREnv(SC2Env):
     metadata = {'render.modes': ['human']}
     default_settings = {
         'map_name': "DefeatRoaches",
-        'players': [sc2_env.Agent(sc2_env.Race.terran),
-                    sc2_env.Bot(sc2_env.Race.zerg, sc2_env.Difficulty.hard)],
+        'players': [sc2_env.Agent(sc2_env.Race.terran)],
         'agent_interface_format': features.AgentInterfaceFormat(
             action_space=actions.ActionSpace.RAW,
             use_raw_units=True,
@@ -27,6 +26,7 @@ class DREnv(SC2Env):
         self.env = None
         self.marines = []
         self.roaches = []
+
         self._num_step = 0
         self._episode_reward = 0
         self._episode = 0
@@ -81,10 +81,10 @@ class DREnv(SC2Env):
         raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
-        done = raw_obs.last()
         self._num_step += 1
         self._episode_reward += reward
         self._total_reward += reward
+        done = raw_obs.last()
         info = self.get_info() if done else {}
         # each step will set the dictionary to emtpy
         return obs, reward, done, info
