@@ -178,9 +178,14 @@ class CMGEnv(SC2Env):
                                    units.Neutral.RichMineralField750
                                ]]
             scv = random.choice(idle_scvs)
-            mineral_patch = random.choice(mineral_patches)
-            return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
-                "now", scv.tag, mineral_patch.tag)
+            if len(mineral_patches) > 0:
+                command_centers = self.get_my_completed_units_by_type(obs, units.Terran.CommandCenter)
+                cc_distance = self.get_distances(obs, command_centers, (scv.x, scv.y))
+                command_center = command_centers[np.argmin(cc_distance)]
+                distances = self.get_distances(obs, mineral_patches, (command_center.x, command_center.y))
+                mineral_patch = mineral_patches[np.argmin(distances)]
+                return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
+                    "now", scv.tag, mineral_patch.tag)
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_supply_depot(self, obs):
@@ -208,7 +213,7 @@ class CMGEnv(SC2Env):
                 if command_center.order_length == 5:
                     return actions.RAW_FUNCTIONS.no_op()
 
-                if command_center.order_length < 1:
+                if command_center.order_length < 5:
                     return actions.RAW_FUNCTIONS.Train_SCV_quick("now", command_center.tag)
 
         return actions.RAW_FUNCTIONS.no_op()
@@ -224,9 +229,10 @@ class CMGEnv(SC2Env):
                        units.Neutral.VespeneGeyser,
                    ]]
         scv = random.choice(scvs)
-        geyser = random.choice(geysers)
-        return actions.RAW_FUNCTIONS.Build_Refinery_pt(
-            "now", scv.tag, geyser.tag)
+        if len(geysers) > 0:
+            geyser = random.choice(geysers)
+            return actions.RAW_FUNCTIONS.Build_Refinery_pt(
+                "now", scv.tag, geyser.tag)
 
     def harvest_gas(self, obs):
         scvs = self.get_my_completed_units_by_type(obs, units.Terran.SCV)
