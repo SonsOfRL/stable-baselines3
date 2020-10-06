@@ -176,9 +176,10 @@ class BMEnv(SC2Env):
                                    units.Neutral.RichMineralField750
                                ]]
             scv = random.choice(idle_scvs)
-            mineral_patch = random.choice(mineral_patches)
-            return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
-                "now", scv.tag, mineral_patch.tag)
+            if len(mineral_patches) > 0:
+                mineral_patch = random.choice(mineral_patches)
+                return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
+                    "now", scv.tag, mineral_patch.tag)
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_supply_depot(self, obs):
