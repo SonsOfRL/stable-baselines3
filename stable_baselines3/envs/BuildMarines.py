@@ -27,7 +27,7 @@ class BMEnv(SC2Env):
         super().__init__()
         self.kwargs = kwargs
         self.env = None
-
+        self.obs = None
 
         self._num_step = 0
         self._episode_reward = 0
@@ -64,6 +64,7 @@ class BMEnv(SC2Env):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs):
+        self.obs = raw_obs
         new_obs = np.zeros((12, 1), dtype=np.uint8)
         SCVs = self.get_units_by_type(raw_obs, units.Terran.SCV, 1)
         depots = self.get_units_by_type(raw_obs, units.Terran.SupplyDepot, 1)
@@ -96,8 +97,7 @@ class BMEnv(SC2Env):
         return new_obs.reshape(-1)
 
     def step(self, action):
-        obs = self.env.step([self.do_nothing()])[0]
-        raw_obs = self.take_action(obs, action)
+        raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
         done = raw_obs.last()
@@ -109,19 +109,19 @@ class BMEnv(SC2Env):
         info = self.get_info() if done else {}
         return obs, reward, done, info
 
-    def take_action(self, obs, action):
+    def take_action(self, action):
         if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
         elif action == 1:
-            action_mapped = self.harvest_minerals(obs)
+            action_mapped = self.harvest_minerals(self.obs)
         elif action == 2:
-            action_mapped = self.train_scv(obs)
+            action_mapped = self.train_scv(self.obs)
         elif action == 3:
-            action_mapped = self.build_supply_depot(obs)
+            action_mapped = self.build_supply_depot(self.obs)
         elif action == 4:
-            action_mapped = self.build_barracks(obs)
+            action_mapped = self.build_barracks(self.obs)
         else:
-            action_mapped = self.train_marine(obs)
+            action_mapped = self.train_marine(self.obs)
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
@@ -232,7 +232,7 @@ class BMEnv(SC2Env):
             obs, units.Terran.CommandCenter)
         free_supply = (obs.observation.player.food_cap -
                        obs.observation.player.food_used)
-        if (len(completed_command_center) > 0 and obs.observation.player.minerals >= 50 and len(scvs) <= 20
+        if (len(completed_command_center) > 0 and obs.observation.player.minerals >= 50 and len(scvs) <= 23
                 and free_supply > 0):
             command_center = self.get_my_completed_units_by_type(obs, units.Terran.CommandCenter)[0]
             if command_center.order_length < 2:

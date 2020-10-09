@@ -29,7 +29,7 @@ class CMGEnv(SC2Env):
         self.supply_depot = []
         self.command_center = []
         self.refinery = []
-
+        self.obs = None
         self._num_step = 0
         self._episode_reward = 0
         self._episode = 0
@@ -67,7 +67,7 @@ class CMGEnv(SC2Env):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs):
-
+        self.obs = raw_obs
         SCVs = self.get_units_by_type(raw_obs, units.Terran.SCV, 1)
         idle_scvs = [scv for scv in SCVs if scv.order_length == 0]
         supply_depot = self.get_units_by_type(raw_obs, units.Terran.SupplyDepot, 1)
@@ -96,8 +96,7 @@ class CMGEnv(SC2Env):
         return obs.reshape(-1)
 
     def step(self, action):
-        obs = self.env.step([self.do_nothing()])[0]
-        raw_obs = self.take_action(obs, action)
+        raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
         self._num_step += 1
@@ -108,22 +107,22 @@ class CMGEnv(SC2Env):
         # each step will set the dictionary to emtpy
         return obs, reward, done, info
 
-    def take_action(self, obs, action):
+    def take_action(self, action):
 
         if action == 0:
-            action_mapped = actions.RAW_FUNCTIONS.no_op()
+            action_mapped = self.harvest_gas(self.obs)
         elif action == 1:
-            action_mapped = self.train_scv(obs)
+            action_mapped = self.train_scv(self.obs)
         elif action == 2:
-            action_mapped = self.harvest_minerals(obs)
+            action_mapped = self.harvest_minerals(self.obs)
         elif action == 3:
-            action_mapped = self.build_supply_depot(obs)
+            action_mapped = self.build_supply_depot(self.obs)
         elif action == 4:
-            action_mapped = self.build_refinery(obs)
+            action_mapped = self.build_refinery(self.obs)
         elif action == 5:
-            action_mapped = self.build_command_center(obs)
-        elif action == 6:
-            action_mapped = self.harvest_gas(obs)
+            action_mapped = self.build_command_center(self.obs)
+        else:
+            action_mapped = actions.RAW_FUNCTIONS.no_op()
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
@@ -205,9 +204,9 @@ class CMGEnv(SC2Env):
             obs, units.Terran.CommandCenter)
         free_supply = (obs.observation.player.food_cap -
                        obs.observation.player.food_used)
-        if (len(completed_command_center) > 0 and obs.observation.player.minerals >= 50
+        if (len(completed_command_center) > 0 and obs.observation.player.minerals >= 100
                 and free_supply > 0):
-            for cc in range(len(completed_command_center)-1):
+            for cc in range(len(completed_command_center)):
                 command_center = self.get_my_completed_units_by_type(obs, units.Terran.CommandCenter)[cc]
 
                 if command_center.order_length == 5:
@@ -219,7 +218,11 @@ class CMGEnv(SC2Env):
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_refinery(self, obs):
-        scvs = self.get_my_units_by_type(obs, units.Terran.SCV)
+        scvs = self.get_my_completed_units_by_type(obs, units.Terran.SCV)
+        ccs = self.get_my_completed_units_by_type(obs, units.Terran.CommandCenter)
+        refineries = self.get_my_units_by_type(obs, units.Terran.Refinery)
+
+
         geysers = [unit for unit in obs.observation.raw_units
                    if unit.unit_type in [
                        units.Neutral.ProtossVespeneGeyser,
@@ -230,9 +233,24 @@ class CMGEnv(SC2Env):
                    ]]
         scv = random.choice(scvs)
         if len(geysers) > 0:
-            geyser = random.choice(geysers)
-            return actions.RAW_FUNCTIONS.Build_Refinery_pt(
-                "now", scv.tag, geyser.tag)
+            command_center_xy = [ccs[0].x, ccs[0].y]
+            distances = self.get_distances(obs, geysers, command_center_xy)
+            if len(refineries) == 0:
+                geyser = geysers[np.argmin(distances)]
+                return actions.RAW_FUNCTIONS.Build_Refinery_pt("now", scv.tag, geyser.tag)
+
+            elif len(refineries) >= 4:
+                return actions.RAW_FUNCTIONS.no_op()
+
+            else:
+                k = len(refineries)
+                geyser = geysers[np.argpartition(distances, k)[k]]
+                return actions.RAW_FUNCTIONS.Build_Refinery_pt("now", scv.tag, geyser.tag)
+
+
+
+        return actions.RAW_FUNCTIONS.no_op()
+
 
     def harvest_gas(self, obs):
         scvs = self.get_my_completed_units_by_type(obs, units.Terran.SCV)
