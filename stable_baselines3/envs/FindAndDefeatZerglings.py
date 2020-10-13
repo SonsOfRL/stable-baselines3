@@ -31,7 +31,7 @@ class FDZEnv(SC2Env):
         self._episode = 0
 
         # 0 no operation
-        # 1-4096 attack move selected coordinate
+        # 1-4096 attack move selected coordinate (64x64)
         self.action_space = spaces.Discrete(4097)
 
         # [0: x, 1: y, 2: hp]
@@ -49,11 +49,12 @@ class FDZEnv(SC2Env):
         self.marines = []
         self.zerglings = []
 
+        raw_obs = self.env.reset()[0]
+
         self._episode += 1
         self._num_step = 0
         self._episode_reward = 0
 
-        raw_obs = self.env.reset()[0]
         return self.get_derived_obs(raw_obs)
 
     def init_env(self):
@@ -61,18 +62,12 @@ class FDZEnv(SC2Env):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs):
+        self.obs = raw_obs
         obs = np.zeros((50, 3), dtype=np.uint8)
         marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
         zerglings = self.get_units_by_type(raw_obs, units.Zerg.Zergling, 4)
         self.marines = []
         self.zerglings = []
-
-        if len(zerglings) > 0:
-            enemy_on_sight = 1
-        else:
-            enemy_on_sight = 0
-
-        obs[0] = np.array([enemy_on_sight, enemy_on_sight, enemy_on_sight])
 
         for i, m in enumerate(marines):
             self.marines.append(m)
@@ -85,8 +80,7 @@ class FDZEnv(SC2Env):
         return obs.reshape(-1)
 
     def step(self, action):
-        obs = self.env.step([self.do_nothing()])[0]
-        raw_obs = self.take_action(obs, action)
+        raw_obs = self.take_action(action)
         reward = raw_obs.reward
         obs = self.get_derived_obs(raw_obs)
         self._num_step += 1
@@ -102,19 +96,21 @@ class FDZEnv(SC2Env):
                 if unit.unit_type == unit_type
                 and unit.alliance == features.PlayerRelative.ENEMY]
 
-    def take_action(self,obs, action):
-        #obs = self.env.step([self.do_nothing()])[0]
-        x = np.floor((action - 1) / 64)
-        y = (action - 1) % 64
-        action_mapped = self.attack_move(obs, x, y)
+    def take_action(self, action):
+        if action == 0:
+            action_mapped = actions.RAW_FUNCTIONS.no_op()
+        else:
+            x = np.floor((action - 1) / 64)
+            y = (action - 1) % 64
+            action_mapped = self.attack_move(x, y)
 
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
 
-    def attack_move(self, obs,  x, y):
+    def attack_move(self, x, y):
         try:                         #TODO SELECT ALL ARMY
-            marines = self.get_my_units_by_type(obs, units.Terran.Marine)
+            marines = self.get_my_units_by_type(self.obs, units.Terran.Marine)
             target = (x, y)
 
             distances = self.get_distances(marines, target)
