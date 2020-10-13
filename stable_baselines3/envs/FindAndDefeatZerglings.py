@@ -29,6 +29,8 @@ class FDZEnv(SC2Env):
         self._num_step = 0
         self._episode_reward = 0
         self._episode = 0
+        self.obs = None
+
 
         # 0 no operation
         # 1-4096 attack move selected coordinate (64x64)

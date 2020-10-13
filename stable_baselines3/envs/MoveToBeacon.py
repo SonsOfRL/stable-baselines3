@@ -16,7 +16,8 @@ class MTBEnv(SC2Env):
         'agent_interface_format': features.AgentInterfaceFormat(
             action_space=actions.ActionSpace.RAW,
             use_raw_units=True,
-            raw_resolution=64),
+            raw_resolution=64,
+            use_feature_units=True),
         'realtime': False
     }
 
@@ -29,10 +30,12 @@ class MTBEnv(SC2Env):
         self._num_step = 0
         self._episode_reward = 0
         self._episode = 0
+        self.obs = None
+
         # 0 no operation
-        # 1~32 move
-        # 33~122 attack
-        self.action_space = spaces.Discrete(123)
+        # 1-4096 attack-move to selected coordinate by first marine (64x64 = 4096)
+        # 4097-8192 attack-move to selected coordinate by second marine (4096*2 = 8192)
+        self.action_space = spaces.Discrete(8193)
         # [0: x, 1: y, 2: hp]
         self.observation_space = spaces.Box(
             low=0,
@@ -59,17 +62,13 @@ class MTBEnv(SC2Env):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs):
-        _PLAYER_NEUTRAL = features.PlayerRelative.NEUTRAL
-        player_relative = raw_obs.observation.feature_screen.player_relative
-        beacon = self._xy_locs(player_relative == _PLAYER_NEUTRAL)
-
-
-
+        self.obs = raw_obs
+        beacon = self.get_beacon(raw_obs)
         marine = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
         obs = np.zeros((2, 2), dtype=np.uint8)
 
         obs[0] = [marine[0].x, marine[0].y]
-        obs[1] = beacon
+        obs[1] = [beacon[0].x, beacon[0].y]
         return obs.reshape(-1)
 
     def get_neutral_units_by_type(self, obs, unit_type):
@@ -92,58 +91,40 @@ class MTBEnv(SC2Env):
     def take_action(self, action):
         if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
+        elif action <= 4096:
+            x = np.floor((action - 1) / 64)
+            y = (action - 1) % 64
+            action_mapped = self.attack_move(x, y)
         else:
-            derived_action = np.floor((action - 1) / 31)
-            idx = 0
-            if derived_action == 0:
-                action_mapped = self.move_up(idx)
-            elif derived_action == 1:
-                action_mapped = self.move_down(idx)
-            elif derived_action == 2:
-                action_mapped = self.move_left(idx)
-            else:
-                action_mapped = self.move_right(idx)
+            action = action - 4096
+            x = np.floor((action - 1) / 64)
+            y = (action - 1) % 64
+            action_mapped = self.attack_move(x, y)
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
 
-    def move_up(self, idx):
-        idx = np.floor(idx)
+    def attack_move(self, x, y):
         try:
-            selected = self.marines[idx]
-            new_pos = [selected.x, selected.y - 2]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
+            marines = self.get_my_units_by_type(self.obs, units.Terran.Marine)
+            target = (x, y)
+            marine = marines[0]
+
+            return actions.RAW_FUNCTIONS.Attack_pt("now", marine.tag, target)
         except:
             return actions.RAW_FUNCTIONS.no_op()
 
-    def _xy_locs(mask):
-        """Mask should be a set of bools from comparison with a feature layer."""
-        y, x = mask.nonzero()
-        return list(zip(x, y))
+    def do_nothing(self):
+        return actions.RAW_FUNCTIONS.no_op()
 
-    def move_down(self, idx):
-        try:
-            selected = self.marines[idx]
-            new_pos = [selected.x, selected.y + 2]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
+    def get_my_units_by_type(self, obs, unit_type):
+        return [unit for unit in obs.observation.raw_units
+                if unit.unit_type == unit_type
+                and unit.alliance == features.PlayerRelative.SELF]
 
-    def move_left(self, idx):
-        try:
-            selected = self.marines[idx]
-            new_pos = [selected.x - 2, selected.y]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
-
-    def move_right(self, idx):
-        try:
-            selected = self.marines[idx]
-            new_pos = [selected.x + 2, selected.y]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
+    def get_beacon(self, obs):
+        return [unit for unit in obs.observation.raw_units
+               if unit.alliance == features.PlayerRelative.NEUTRAL]
 
     def get_units_by_type(self, obs, unit_type, player_relative=0):
         """

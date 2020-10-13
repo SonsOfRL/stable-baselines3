@@ -26,6 +26,7 @@ class CMSEnv(SC2Env):
         self.env = None
         self.marines = []
         self.minerals = []
+        self.obs = None
 
         self._num_step = 0
         self._episode_reward = 0
@@ -61,6 +62,7 @@ class CMSEnv(SC2Env):
         self.env = sc2_env.SC2Env(**args)
 
     def get_derived_obs(self, raw_obs):
+        self.obs = raw_obs
         _PLAYER_NEUTRAL = features.PlayerRelative.NEUTRAL
 
         obs = np.zeros((30, 2), dtype=np.uint8)
@@ -95,52 +97,30 @@ class CMSEnv(SC2Env):
         if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
         else:
-            derived_action = np.floor((action - 1) / 16)
-            idx = (action - 1) % 2
-            if derived_action == 0:
-                action_mapped = self.move_up(idx)
-            elif derived_action == 1:
-                action_mapped = self.move_down(idx)
-            elif derived_action == 2:
-                action_mapped = self.move_left(idx)
-            else:
-                action_mapped = self.move_right(idx)
+            x = np.floor((action - 1) / 64)
+            y = (action - 1) % 64
+            action_mapped = self.attack_move(x, y)
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
 
-    def move_up(self, idx):
-        idx = np.floor(idx)
+    def attack_move(self, x, y):
         try:
-            selected = self.marines[idx]
-            new_pos = [selected.x, selected.y - 2]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
+            marines = self.get_my_units_by_type(self.obs, units.Terran.Marine)
+            target = (x, y)
+            marine = marines[0]
+
+            return actions.RAW_FUNCTIONS.Attack_pt("now", marine.tag, target)
         except:
             return actions.RAW_FUNCTIONS.no_op()
 
-    def move_down(self, idx):
-        try:
-            selected = self.marines[idx]
-            new_pos = [selected.x, selected.y + 2]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
+    def do_nothing(self):
+        return actions.RAW_FUNCTIONS.no_op()
 
-    def move_left(self, idx):
-        try:
-            selected = self.marines[idx]
-            new_pos = [selected.x - 2, selected.y]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
-
-    def move_right(self, idx):
-        try:
-            selected = self.marines[idx]
-            new_pos = [selected.x + 2, selected.y]
-            return actions.RAW_FUNCTIONS.Move_pt("now", selected.tag, new_pos)
-        except:
-            return actions.RAW_FUNCTIONS.no_op()
+    def get_my_units_by_type(self, obs, unit_type):
+        return [unit for unit in obs.observation.raw_units
+                if unit.unit_type == unit_type
+                and unit.alliance == features.PlayerRelative.SELF]
 
     def get_units_by_type(self, obs, unit_type, player_relative=0):
         """
