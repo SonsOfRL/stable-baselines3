@@ -232,7 +232,7 @@ class BMEnv(SC2Env):
             obs, units.Terran.CommandCenter)
         free_supply = (obs.observation.player.food_cap -
                        obs.observation.player.food_used)
-        if (len(completed_command_center) > 0 and obs.observation.player.minerals >= 50 and len(scvs) <= 23
+        if (len(completed_command_center) > 0 and obs.observation.player.minerals >= 50
                 and free_supply > 0):
             command_center = self.get_my_completed_units_by_type(obs, units.Terran.CommandCenter)[0]
             if command_center.order_length < 2:
