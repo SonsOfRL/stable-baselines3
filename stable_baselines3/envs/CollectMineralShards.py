@@ -33,10 +33,9 @@ class CMSEnv(SC2Env):
         self._episode = 0
 
         # 0 no operation
-        # 1~32 move
-        # 33~122 attack
-        self.action_space = spaces.Discrete(123)
-        # [0: x, 1: y, 2: hp]
+        # 1-4096 attack-move to selected coordinate with marine (64x64 = 4096)
+        # 4097-8192 attack-move to selected coordinate by second marine (4096*2 = 8192)
+        self.action_space = spaces.Discrete(8193)
         self.observation_space = spaces.Box(
             low=0,
             high=64,
@@ -96,7 +95,12 @@ class CMSEnv(SC2Env):
     def take_action(self, action):
         if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
+        elif action <= 4096:
+            x = np.floor((action - 1) / 64)
+            y = (action - 1) % 64
+            action_mapped = self.attack_move(x, y)
         else:
+            action = action - 4096
             x = np.floor((action - 1) / 64)
             y = (action - 1) % 64
             action_mapped = self.attack_move(x, y)

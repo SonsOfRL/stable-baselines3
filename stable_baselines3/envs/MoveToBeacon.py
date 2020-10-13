@@ -34,9 +34,7 @@ class MTBEnv(SC2Env):
 
         # 0 no operation
         # 1-4096 attack-move to selected coordinate by first marine (64x64 = 4096)
-        # 4097-8192 attack-move to selected coordinate by second marine (4096*2 = 8192)
-        self.action_space = spaces.Discrete(8193)
-        # [0: x, 1: y, 2: hp]
+        self.action_space = spaces.Discrete(4097)
         self.observation_space = spaces.Box(
             low=0,
             high=64,
@@ -91,12 +89,7 @@ class MTBEnv(SC2Env):
     def take_action(self, action):
         if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
-        elif action <= 4096:
-            x = np.floor((action - 1) / 64)
-            y = (action - 1) % 64
-            action_mapped = self.attack_move(x, y)
         else:
-            action = action - 4096
             x = np.floor((action - 1) / 64)
             y = (action - 1) % 64
             action_mapped = self.attack_move(x, y)
