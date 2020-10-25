@@ -96,23 +96,25 @@ class CMSEnv(SC2Env):
         if action == 0:
             action_mapped = actions.RAW_FUNCTIONS.no_op()
         elif action <= 4096:
+            marine_number = 0
             x = np.floor((action - 1) / 64)
             y = (action - 1) % 64
-            action_mapped = self.attack_move(x, y)
+            action_mapped = self.attack_move(x, y, marine_number)
         else:
+            marine_number = 1
             action = action - 4096
             x = np.floor((action - 1) / 64)
             y = (action - 1) % 64
-            action_mapped = self.attack_move(x, y)
+            action_mapped = self.attack_move(x, y, marine_number)
 
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
 
-    def attack_move(self, x, y):
+    def attack_move(self, x, y, marine_number):
         try:
             marines = self.get_my_units_by_type(self.obs, units.Terran.Marine)
             target = (x, y)
-            marine = marines[0]
+            marine = marines[marine_number]
 
             return actions.RAW_FUNCTIONS.Attack_pt("now", marine.tag, target)
         except:
