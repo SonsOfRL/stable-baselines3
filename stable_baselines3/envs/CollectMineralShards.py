@@ -39,7 +39,7 @@ class CMSEnv(SC2Env):
         self.observation_space = spaces.Box(
             low=0,
             high=64,
-            shape=(30 * 2,),
+            shape=(22 * 2,),
             dtype=np.uint8
         )
 
@@ -64,7 +64,7 @@ class CMSEnv(SC2Env):
         self.obs = raw_obs
         _PLAYER_NEUTRAL = features.PlayerRelative.NEUTRAL
 
-        obs = np.zeros((30, 2), dtype=np.uint8)
+        obs = np.zeros((22, 2), dtype=np.uint8)
         marines = self.get_units_by_type(raw_obs, units.Terran.Marine, 1)
         self.marines = []
 
@@ -77,7 +77,7 @@ class CMSEnv(SC2Env):
 
         for i, mineral in enumerate(minerals):
             self.minerals.append(mineral)
-            obs[i+2] = minerals[i]
+            obs[i+len(marines)] = minerals[i]
         return obs.reshape(-1)
 
     def step(self, action):
