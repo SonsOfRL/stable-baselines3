@@ -110,7 +110,7 @@ class CMSEnv(SC2Env):
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
 
-    def attack_move(self, x, y, marine_number):
+    def attack_move(self, x, y, marine_number=0):
         try:
             marines = self.get_my_units_by_type(self.obs, units.Terran.Marine)
             target = (x, y)
