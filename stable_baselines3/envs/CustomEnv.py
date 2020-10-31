@@ -38,7 +38,7 @@ class CustomEnv(SC2Env):
 
         # 0 no operation
         #
-        self.action_space = spaces.Discrete(13)
+        self.action_space = spaces.Discrete(16)
 
         # [0: x, 1: y, 2: hp]
         self.observation_space = spaces.Box(
@@ -90,7 +90,7 @@ class CustomEnv(SC2Env):
         elif action == 4:
             action_mapped = self.build_barracks()
         elif action == 5:
-            action_mapped = self.attack_base()
+            action_mapped = self.attack_base_marine()
         elif action == 6:
             action_mapped = self.attack_random_enemy()
         elif action == 7:
@@ -103,9 +103,15 @@ class CustomEnv(SC2Env):
             action_mapped = self.attach_techlab()
         elif action == 11:
             action_mapped = self.train_marauder()
+        elif action == 12:
+            action_mapped = self.attack_base_marauder()
+        elif action == 13:
+            action_mapped = self.all_attack()
+        elif action == 14:
+            action_mapped = self.protect_base()
         else:
             action_mapped = self.train_marine()
-
+        spy = 3
         raw_obs = self.env.step([action_mapped])[0]
         return raw_obs
 
@@ -307,7 +313,7 @@ class CustomEnv(SC2Env):
         return actions.RAW_FUNCTIONS.no_op()
 
     def build_refinery(self):
-        scvs = self.get_my_completed_units_by_type(self.obs, units.Terran.SCV)
+        ccs = self.get_my_completed_units_by_type(self.obs, units.Terran.CommandCenter)
         refineries = self.get_my_units_by_type(self.obs, units.Terran.Refinery)
         geysers = [unit for unit in self.obs.observation.raw_units
                    if unit.unit_type in [
@@ -318,8 +324,8 @@ class CustomEnv(SC2Env):
                        units.Neutral.VespeneGeyser,
                    ]]
         scv = self.select_scv()
-        if len(geysers) > 0 and len(refineries) < 2:
-            ccs = self.get_my_completed_units_by_type(self.obs, units.Terran.CommandCenter)
+        if len(geysers) > 0 and len(refineries) < 2 and len(ccs) > 0:
+
             command_center_xy = [ccs[0].x, ccs[0].y]
             distances = self.get_distances(self.obs, geysers, command_center_xy)
             if len(refineries) == 0:
@@ -334,45 +340,42 @@ class CustomEnv(SC2Env):
         return actions.RAW_FUNCTIONS.no_op()
 
 
+
+
     def harvest_gas(self):
         scvs = self.get_my_completed_units_by_type(self.obs, units.Terran.SCV)
-        idle_scvs = [scv for scv in scvs if scv.order_length == 0]
         refineries = self.get_my_completed_units_by_type(self.obs, units.Terran.Refinery)
         refinery_tags = []
-        for refinery in range(len(refineries)):   #TODO THIS DEFINITELY DONT DO WHAT I WANT
-            if refinery not in refinery_tags:
-                refinery_tags.append(refinery)
+        new_refineries = []
+        idle_scvs = [scv for scv in scvs if scv.order_length == 0]
 
 
-        """
-        if self.refinery1 is None and len(refineries) > 0:
-            self.refinery1 = refineries[0].tag
-        if self.refinery2 is None and len(refineries) > 1:
-            self.refinery2 = refineries[1].tag
-        if self.refinery3 is None and len(refineries) > 2:
-            self.refinery3 = refineries[2].tag
-        if self.refinery4 is None and len(refineries) > 3:
-            self.refinery4 = refineries[3].tag
-        new_refineries = [self.refinery1, self.refinery2, self.refinery3, self.refinery4]
-        """
+        if len(refineries) > 0 and self.refinery_counter1 < 2 and self.refinery_counter2 < 2:
+            if len(refineries) == 1 and self.refinery_counter1 >= 2:
+                return actions.RAW_FUNCTIONS.no_op()
+            else:
+                for refinery in range(len(refineries)):
+                    if refineries[refinery].tag not in refinery_tags:
+                        refinery_tags.append(refineries[refinery].tag)
+                        new_refineries.append(refineries[refinery])
 
-        if len(refinery_tags) > 0 and len(scvs) > 0:
+                if len(new_refineries) > 0 and len(scvs) > 0:
 
-            choice = random.randint(0, len(refinery_tags)-1)
-            if refinery_tags[choice] is not None:
+                    choice = random.randint(0, len(new_refineries)-1)
+                    if new_refineries[choice] is not None:
 
-                if choice == 0 and self.refinery_counter1 < 3:
-                    scv = self.select_scv()
-                    self.refinery_counter1 = self.refinery_counter1 + 1
-                    return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
-                                "now", scv.tag, refinery_tags[choice])
+                        if choice == 0 and self.refinery_counter1 < 3 and len(idle_scvs) > 0:
+                            scv = random.choice(idle_scvs)
+                            self.refinery_counter1 = self.refinery_counter1 + 1
+                            return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
+                                        "now", scv.tag, new_refineries[choice].tag)
 
-                elif choice == 1 and self.refinery_counter2 < 3:
-                    scv = self.select_scv()
-                    self.refinery_counter2 = self.refinery_counter2 + 1
+                        elif choice == 1 and self.refinery_counter2 < 3 and len(idle_scvs) > 0:
+                            scv = random.choice(idle_scvs)
+                            self.refinery_counter2 = self.refinery_counter2 + 1
 
-                    return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
-                        "now", scv.tag, refinery_tags[choice])
+                            return actions.RAW_FUNCTIONS.Harvest_Gather_unit(
+                                "now", scv.tag, new_refineries[choice].tag)
 
 
         return actions.RAW_FUNCTIONS.no_op()
@@ -418,11 +421,29 @@ class CustomEnv(SC2Env):
             return random.choice(scvs)
 
 
-    def attack_base(self):
+    def protect_base(self):
+        army_tags = []
         marines = self.get_my_units_by_type(self.obs, units.Terran.Marine)
+        marauders = self.get_enemy_units_by_type(self.obs, units.Terran.Marauder)
+        if len(marines) > 0:
+            for marine in range(len(marines)):
+                army_tags.append(marines[marine].tag)
+
+        if len(marauders) > 0:
+            for marauder in range(len(marauders)):
+                army_tags.append(marauders[marauder].tag)
+
+        if len(marauders) > 0 or len(marines) > 0:
+            attack_xy = (28, 23) if self.base_top_left else (29, 43)
+            return actions.RAW_FUNCTIONS.Attack_pt(
+                "now", army_tags, (attack_xy[0], attack_xy[1]))
+
+        return actions.RAW_FUNCTIONS.no_op()
+
+    def attack_base_marauder(self):
         marauders = self.get_my_units_by_type(self.obs, units.Terran.Marauder)
 
-        if len(marauders) >0:
+        if len(marauders) > 0:
             attack_xy = (38, 44) if self.base_top_left else (19, 23)
             distances = self.get_distances(self.obs, marauders, attack_xy)
             marauder = marauders[np.argmax(distances)]
@@ -430,6 +451,11 @@ class CustomEnv(SC2Env):
             y_offset = random.randint(-4, 4)
             return actions.RAW_FUNCTIONS.Attack_pt(
                 "now", marauder.tag, (attack_xy[0] + x_offset, attack_xy[1] + y_offset))
+        return actions.RAW_FUNCTIONS.no_op()
+
+
+    def attack_base_marine(self):
+        marines = self.get_my_units_by_type(self.obs, units.Terran.Marine)
 
         if len(marines) > 0:
             attack_xy = (38, 44) if self.base_top_left else (19, 23)
@@ -440,6 +466,26 @@ class CustomEnv(SC2Env):
             return actions.RAW_FUNCTIONS.Attack_pt(
                 "now", marine.tag, (attack_xy[0] + x_offset, attack_xy[1] + y_offset))
         return actions.RAW_FUNCTIONS.no_op()
+
+    def all_attack(self):
+            army_tags = []
+            marines = self.get_my_units_by_type(self.obs, units.Terran.Marine)
+            marauders = self.get_enemy_units_by_type(self.obs, units.Terran.Marauder)
+            if len(marines) > 0:
+                for marine in range(len(marines)):
+                    army_tags.append(marines[marine].tag)
+
+            if len(marauders) > 0:
+                for marauder in range(len(marauders)):
+                    army_tags.append(marauders[marauder].tag)
+
+            if len(marauders) > 0 or len(marines) > 0:
+                attack_xy = (38, 44) if self.base_top_left else (19, 23)
+                x_offset = random.randint(-4, 4)
+                y_offset = random.randint(-4, 4)
+                return actions.RAW_FUNCTIONS.Attack_pt(
+                    "now", army_tags, (attack_xy[0] + x_offset, attack_xy[1] + y_offset))
+            return actions.RAW_FUNCTIONS.no_op()
 
     def attack_random_enemy(self):
         my_marines = self.get_my_units_by_type(self.obs, units.Terran.Marine)
@@ -453,7 +499,7 @@ class CustomEnv(SC2Env):
             return actions.RAW_FUNCTIONS.Attack_unit(
                 "now", marine.tag, enemy.tag)
 
-        return self.attack_base()
+        return actions.RAW_FUNCTIONS.no_op()
 
 
 
