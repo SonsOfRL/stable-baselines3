@@ -1,7 +1,8 @@
 """Probability distributions."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
+from collections import deque
 
 import gym
 import torch as th
@@ -173,7 +174,8 @@ class DiagGaussianDistribution(Distribution):
     def mode(self) -> th.Tensor:
         return self.distribution.mean
 
-    def actions_from_params(self, mean_actions: th.Tensor, log_std: th.Tensor, deterministic: bool = False) -> th.Tensor:
+    def actions_from_params(self, mean_actions: th.Tensor, log_std: th.Tensor,
+                            deterministic: bool = False) -> th.Tensor:
         # Update the proba distribution
         self.proba_distribution(mean_actions, log_std)
         return self.get_actions(deterministic=deterministic)
@@ -325,7 +327,8 @@ class MultiCategoricalDistribution(Distribution):
         return action_logits
 
     def proba_distribution(self, action_logits: th.Tensor) -> "MultiCategoricalDistribution":
-        self.distributions = [Categorical(logits=split) for split in th.split(action_logits, tuple(self.action_dims), dim=1)]
+        self.distributions = [Categorical(logits=split) for split in
+                              th.split(action_logits, tuple(self.action_dims), dim=1)]
         return self
 
     def log_prob(self, actions: th.Tensor) -> th.Tensor:
@@ -428,13 +431,13 @@ class StateDependentNoiseDistribution(Distribution):
     """
 
     def __init__(
-        self,
-        action_dim: int,
-        full_std: bool = True,
-        use_expln: bool = False,
-        squash_output: bool = False,
-        learn_features: bool = False,
-        epsilon: float = 1e-6,
+            self,
+            action_dim: int,
+            full_std: bool = True,
+            use_expln: bool = False,
+            squash_output: bool = False,
+            learn_features: bool = False,
+            epsilon: float = 1e-6,
     ):
         super(StateDependentNoiseDistribution, self).__init__()
         self.distribution = None
@@ -496,7 +499,7 @@ class StateDependentNoiseDistribution(Distribution):
         self.exploration_matrices = self.weights_dist.rsample((batch_size,))
 
     def proba_distribution_net(
-        self, latent_dim: int, log_std_init: float = -2.0, latent_sde_dim: Optional[int] = None
+            self, latent_dim: int, log_std_init: float = -2.0, latent_sde_dim: Optional[int] = None
     ) -> Tuple[nn.Module, nn.Parameter]:
         """
         Create the layers and parameter that represent the distribution:
@@ -523,7 +526,7 @@ class StateDependentNoiseDistribution(Distribution):
         return mean_actions_net, log_std
 
     def proba_distribution(
-        self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor
+            self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor
     ) -> "StateDependentNoiseDistribution":
         """
         Create the distribution given its parameters (mean, std)
@@ -587,14 +590,14 @@ class StateDependentNoiseDistribution(Distribution):
         return noise.squeeze(1)
 
     def actions_from_params(
-        self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor, deterministic: bool = False
+            self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor, deterministic: bool = False
     ) -> th.Tensor:
         # Update the proba distribution
         self.proba_distribution(mean_actions, log_std, latent_sde)
         return self.get_actions(deterministic=deterministic)
 
     def log_prob_from_params(
-        self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor
+            self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor
     ) -> Tuple[th.Tensor, th.Tensor]:
         actions = self.actions_from_params(mean_actions, log_std, latent_sde)
         log_prob = self.log_prob(actions)
@@ -645,8 +648,93 @@ class TanhBijector(object):
         return th.log(1.0 - th.tanh(x) ** 2 + self.epsilon)
 
 
+class TreeCategoricalDistrubution(MultiCategoricalDistribution):
+
+    def __init__(self, action_dict: Dict[int, Dict[str, Union[List[int], int]]]):
+        """
+        example: {
+            0: {
+                parent: 100000,
+                childs: [1, 2, 5],
+                action_dim: 3,
+            }
+        }
+        """
+        self.action_dict = action_dict
+        self.action_to_node = {}
+
+        assert len(action_dict) > 0
+        for key in action_dict.keys():
+            assert key in range(len(action_dict)), "Invalid action dict"
+
+        queue = deque([0])
+        offset = 0
+        self.action_dict[0]["child_num"] = None
+        while len(queue) > 0:
+            node_ix = queue.pop()
+            node = self.action_dict[node_ix]
+
+            if node["childs"] is not None:
+                for child_num, child_ix in enumerate(node["childs"]):
+                    self.action_dict[child_ix]["child_num"] = child_num
+                    queue.appendleft(child_ix)
+            else:
+                node["offset"] = offset
+                self.action_to_node = {**self.action_to_node,
+                                       **{ij + offset: node_ix for ij in range(node["action_dim"])}}
+                offset += node["action_dim"]
+
+        action_dims = [node["action_dim"] for node in action_dict.values()]
+        super().__init__(action_dims)
+
+    def log_prob(self, actions: th.Tensor) -> th.Tensor:
+        # Extract each discrete action and compute log prob for their respective distributions
+
+        batchsize = actions.shape[0]
+        log_probs = []
+
+        for ij in range(batchsize):
+            act = actions[ij].item()
+            log_prob = 0
+            node_ix = self.action_to_node[act]
+            child_num = act - self.action_dict[node_ix]["offset"]
+            while node_ix is not None:
+                node = self.action_dict[node_ix]
+                logit = self.distributions[node_ix].logits[ij]
+                log_prob += Categorical(logits=logit).log_prob(th.tensor(child_num))
+                child_num = node["child_num"]
+                node_ix = node["parent"]
+
+            log_probs.append(log_prob)
+
+        return th.stack(log_probs)
+
+    def sample(self) -> th.Tensor:
+        sample_list = [dist.sample() for dist in self.distributions]
+        return self._tree_traverse(sample_list)
+
+    def mode(self) -> th.Tensor:
+        sample_list = [th.argmax(dist.probs, dim=1) for dist in self.distributions]
+        return self._tree_traverse(sample_list)
+
+    def _tree_traverse(self, sample_list):
+        batchsize = sample_list[0].shape[0]
+        assert isinstance(batchsize, int), "type: {}".format(type(batchsize))
+
+        action_sample_list = []
+        for ij in range(batchsize):
+            traverse_ix = 0
+            while self.action_dict[traverse_ix]["childs"] is not None:
+                branch_sample = sample_list[traverse_ix][ij].item()
+                traverse_ix = self.action_dict[traverse_ix]["childs"][branch_sample]
+
+            action_sample = sample_list[traverse_ix][ij] + self.action_dict[traverse_ix]["offset"]
+            action_sample_list.append(action_sample)
+        return th.stack(action_sample_list).long()
+
+
 def make_proba_distribution(
-    action_space: gym.spaces.Space, use_sde: bool = False, dist_kwargs: Optional[Dict[str, Any]] = None
+        action_space: gym.spaces.Space, use_sde: bool = False, dist_kwargs: Optional[Dict[str, Any]] = None
 ) -> Distribution:
     """
     Return an instance of Distribution for the correct type of action space
@@ -668,6 +756,8 @@ def make_proba_distribution(
         return CategoricalDistribution(action_space.n, **dist_kwargs)
     elif isinstance(action_space, spaces.MultiDiscrete):
         return MultiCategoricalDistribution(action_space.nvec, **dist_kwargs)
+    elif isinstance(action_space, dict):
+        return TreeCategoricalDistrubution(action_space)
     elif isinstance(action_space, spaces.MultiBinary):
         return BernoulliDistribution(action_space.n, **dist_kwargs)
     else:

@@ -4,6 +4,7 @@ import numpy as np
 import torch as th
 from gym import spaces
 from torch.nn import functional as F
+from gym.spaces.hierarch_space import HierarchSpace
 
 
 def is_image_space(observation_space: spaces.Space, channels_last: bool = True, check_channels: bool = False) -> bool:
