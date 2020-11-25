@@ -7,6 +7,7 @@ from collections import deque
 import gym
 import torch as th
 from gym import spaces
+from stable_baselines3.common.custom_space import TreeDiscreteDict
 from torch import nn as nn
 from torch.distributions import Bernoulli, Categorical, Normal
 
@@ -174,8 +175,7 @@ class DiagGaussianDistribution(Distribution):
     def mode(self) -> th.Tensor:
         return self.distribution.mean
 
-    def actions_from_params(self, mean_actions: th.Tensor, log_std: th.Tensor,
-                            deterministic: bool = False) -> th.Tensor:
+    def actions_from_params(self, mean_actions: th.Tensor, log_std: th.Tensor, deterministic: bool = False) -> th.Tensor:
         # Update the proba distribution
         self.proba_distribution(mean_actions, log_std)
         return self.get_actions(deterministic=deterministic)
@@ -327,8 +327,7 @@ class MultiCategoricalDistribution(Distribution):
         return action_logits
 
     def proba_distribution(self, action_logits: th.Tensor) -> "MultiCategoricalDistribution":
-        self.distributions = [Categorical(logits=split) for split in
-                              th.split(action_logits, tuple(self.action_dims), dim=1)]
+        self.distributions = [Categorical(logits=split) for split in th.split(action_logits, tuple(self.action_dims), dim=1)]
         return self
 
     def log_prob(self, actions: th.Tensor) -> th.Tensor:
@@ -431,13 +430,13 @@ class StateDependentNoiseDistribution(Distribution):
     """
 
     def __init__(
-            self,
-            action_dim: int,
-            full_std: bool = True,
-            use_expln: bool = False,
-            squash_output: bool = False,
-            learn_features: bool = False,
-            epsilon: float = 1e-6,
+        self,
+        action_dim: int,
+        full_std: bool = True,
+        use_expln: bool = False,
+        squash_output: bool = False,
+        learn_features: bool = False,
+        epsilon: float = 1e-6,
     ):
         super(StateDependentNoiseDistribution, self).__init__()
         self.distribution = None
@@ -499,7 +498,7 @@ class StateDependentNoiseDistribution(Distribution):
         self.exploration_matrices = self.weights_dist.rsample((batch_size,))
 
     def proba_distribution_net(
-            self, latent_dim: int, log_std_init: float = -2.0, latent_sde_dim: Optional[int] = None
+        self, latent_dim: int, log_std_init: float = -2.0, latent_sde_dim: Optional[int] = None
     ) -> Tuple[nn.Module, nn.Parameter]:
         """
         Create the layers and parameter that represent the distribution:
@@ -526,7 +525,7 @@ class StateDependentNoiseDistribution(Distribution):
         return mean_actions_net, log_std
 
     def proba_distribution(
-            self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor
+        self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor
     ) -> "StateDependentNoiseDistribution":
         """
         Create the distribution given its parameters (mean, std)
@@ -590,14 +589,14 @@ class StateDependentNoiseDistribution(Distribution):
         return noise.squeeze(1)
 
     def actions_from_params(
-            self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor, deterministic: bool = False
+        self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor, deterministic: bool = False
     ) -> th.Tensor:
         # Update the proba distribution
         self.proba_distribution(mean_actions, log_std, latent_sde)
         return self.get_actions(deterministic=deterministic)
 
     def log_prob_from_params(
-            self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor
+        self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor
     ) -> Tuple[th.Tensor, th.Tensor]:
         actions = self.actions_from_params(mean_actions, log_std, latent_sde)
         log_prob = self.log_prob(actions)
@@ -647,8 +646,8 @@ class TanhBijector(object):
         # Squash correction (from original SAC implementation)
         return th.log(1.0 - th.tanh(x) ** 2 + self.epsilon)
 
-
 class TreeCategoricalDistrubution(MultiCategoricalDistribution):
+
 
     def __init__(self, action_dict: Dict[int, Dict[str, Union[List[int], int]]]):
         """
@@ -680,8 +679,7 @@ class TreeCategoricalDistrubution(MultiCategoricalDistribution):
                     queue.appendleft(child_ix)
             else:
                 node["offset"] = offset
-                self.action_to_node = {**self.action_to_node,
-                                       **{ij + offset: node_ix for ij in range(node["action_dim"])}}
+                self.action_to_node = {**self.action_to_node, **{ij + offset: node_ix for ij in range(node["action_dim"])}}
                 offset += node["action_dim"]
 
         action_dims = [node["action_dim"] for node in action_dict.values()]
@@ -733,8 +731,9 @@ class TreeCategoricalDistrubution(MultiCategoricalDistribution):
         return th.stack(action_sample_list).long()
 
 
+
 def make_proba_distribution(
-        action_space: gym.spaces.Space, use_sde: bool = False, dist_kwargs: Optional[Dict[str, Any]] = None
+    action_space: gym.spaces.Space, use_sde: bool = False, dist_kwargs: Optional[Dict[str, Any]] = None
 ) -> Distribution:
     """
     Return an instance of Distribution for the correct type of action space
@@ -756,8 +755,8 @@ def make_proba_distribution(
         return CategoricalDistribution(action_space.n, **dist_kwargs)
     elif isinstance(action_space, spaces.MultiDiscrete):
         return MultiCategoricalDistribution(action_space.nvec, **dist_kwargs)
-    elif isinstance(action_space, dict):
-        return TreeCategoricalDistrubution(action_space)
+    elif isinstance(action_space, TreeDiscreteDict):
+        return TreeCategoricalDistrubution(action_space.action_dict)
     elif isinstance(action_space, spaces.MultiBinary):
         return BernoulliDistribution(action_space.n, **dist_kwargs)
     else:

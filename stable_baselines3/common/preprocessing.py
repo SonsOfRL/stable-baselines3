@@ -4,7 +4,6 @@ import numpy as np
 import torch as th
 from gym import spaces
 from torch.nn import functional as F
-from gym.spaces.hierarch_space import HierarchSpace
 
 
 def is_image_space(observation_space: spaces.Space, channels_last: bool = True, check_channels: bool = False) -> bool:
@@ -124,9 +123,8 @@ def get_flattened_obs_dim(observation_space: spaces.Space) -> int:
 def get_action_dim(action_space: spaces.Space) -> int:
     """
     Get the dimension of the action space.
-
-    :param action_space: (spaces.Space)
-    :return: (int)
+    :param action_space:
+    :return:
     """
     if isinstance(action_space, spaces.Box):
         return int(np.prod(action_space.shape))
@@ -140,4 +138,4 @@ def get_action_dim(action_space: spaces.Space) -> int:
         # Number of binary actions
         return int(action_space.n)
     else:
-        raise NotImplementedError()
+        raise NotImplementedError(f"{action_space} action space is not supported")

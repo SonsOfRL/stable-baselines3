@@ -6,12 +6,18 @@ import stable_baselines3
 from stable_baselines3.envs.DefeatZerglingsAndBanelings import DZBEnv
 from stable_baselines3.envs.DefeatRoaches import DREnv
 from stable_baselines3.envs.CollectMineralAndGas import CMGEnv
+from stable_baselines3.envs.CMG_noGas_1base import NoEnv
+from stable_baselines3.envs.CMG_2Gas_1base import GasEnv
+
 from stable_baselines3.envs.CollectMineralShards import CMSEnv
 from stable_baselines3.envs.FindAndDefeatZerglings import FDZEnv
+from stable_baselines3.envs.CustomEnv import CustomEnv
+from stable_baselines3.envs.Hierarchical_env import HierarchEnv
 
 from stable_baselines3.envs.MoveToBeacon import MTBEnv
 from stable_baselines3.envs.BuildMarines import BMEnv
 from stable_baselines3 import A2C
+from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common import logger
 from stable_baselines3.common.callbacks import BaseCallback
@@ -19,6 +25,7 @@ from stable_baselines3.common.cmd_util import make_atari_env
 from stable_baselines3.common.vec_env import VecFrameStack
 from pysc2.env import sc2_env, run_loop
 from absl import flags
+import time
 
 FLAGS = flags.FLAGS
 FLAGS([''])
@@ -72,9 +79,7 @@ if __name__ == "__main__":
             [("hypers", hyperparam)]
         )
 
-        env = SubprocVecEnv([lambda: MTBEnv() for i in range(hyperparam["env"]["n_envs"])])
-        #run_loop.run_loop([DZBEnv()], env, max_episodes=1000)
-
+        env = SubprocVecEnv([lambda: HierarchEnv() for i in range(hyperparam["env"]["n_envs"])])
 
         model = A2C(env=env,
                     verbose=1,
@@ -84,3 +89,5 @@ if __name__ == "__main__":
         model.learn(callback=loggcallback,
                     tb_log_name=gamename,
                     **hyperparam["learn"])
+
+        model.save('models/ActualNoGas_{}'.format(int(time.time())))

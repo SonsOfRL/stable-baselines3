@@ -1,6 +1,6 @@
 starcraft:
-  - DefeatRoaches:
-      envname: DefeatRoaches-v0
+  - CustomEnv:
+      envname: CustomEnv-v0
       env:
         seed: 450
         n_envs: 2
@@ -18,7 +18,7 @@ starcraft:
         max_grad_norm: 0.5
         rms_prop_eps: 0.00001
       learn:
-        total_timesteps: !!float 1e7
+        total_timesteps: !!float 5e6
         log_interval: 200
 
  
