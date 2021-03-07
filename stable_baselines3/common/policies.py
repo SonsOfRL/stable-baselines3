@@ -510,6 +510,9 @@ class ActorCriticPolicy(BasePolicy):
         actions = distribution.get_actions(deterministic=deterministic)
         log_prob = distribution.log_prob(actions)
 
+        if len(log_prob.shape) == 2:
+            log_prob = log_prob[:,:].sum(dim=1)
+
         return actions, values, log_prob
 
     def _get_latent(self, obs: th.Tensor) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:

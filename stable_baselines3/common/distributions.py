@@ -693,19 +693,19 @@ class TreeCategoricalDistrubution(MultiCategoricalDistribution):
 
         for ij in range(batchsize):
             act = actions[ij].item()
-            log_prob = 0
+            log_prob = []
             node_ix = self.action_to_node[act]
             child_num = act - self.action_dict[node_ix]["offset"]
             while node_ix is not None:
                 node = self.action_dict[node_ix]
                 logit = self.distributions[node_ix].logits[ij]
-                log_prob += Categorical(logits=logit).log_prob(th.tensor(child_num))
+                log_prob.append(Categorical(logits=logit).log_prob(th.tensor(child_num).to(logit.device)))
                 child_num = node["child_num"]
                 node_ix = node["parent"]
+            log_probs.append(th.stack(log_prob))
 
-            log_probs.append(log_prob)
-
-        return th.stack(log_probs)
+        x = th.stack(log_probs)
+        return x
 
     def sample(self) -> th.Tensor:
         sample_list = [dist.sample() for dist in self.distributions]
@@ -746,17 +746,17 @@ def make_proba_distribution(
     """
     if dist_kwargs is None:
         dist_kwargs = {}
-
     if isinstance(action_space, spaces.Box):
         assert len(action_space.shape) == 1, "Error: the action space must be a vector"
         cls = StateDependentNoiseDistribution if use_sde else DiagGaussianDistribution
         return cls(get_action_dim(action_space), **dist_kwargs)
+    elif isinstance(action_space, TreeDiscreteDict):
+        print("Tree Discrete Action Space initialized")
+        return TreeCategoricalDistrubution(action_space.action_dict)
     elif isinstance(action_space, spaces.Discrete):
         return CategoricalDistribution(action_space.n, **dist_kwargs)
     elif isinstance(action_space, spaces.MultiDiscrete):
         return MultiCategoricalDistribution(action_space.nvec, **dist_kwargs)
-    elif isinstance(action_space, TreeDiscreteDict):
-        return TreeCategoricalDistrubution(action_space.action_dict)
     elif isinstance(action_space, spaces.MultiBinary):
         return BernoulliDistribution(action_space.n, **dist_kwargs)
     else:

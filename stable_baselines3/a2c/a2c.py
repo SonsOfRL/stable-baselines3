@@ -55,6 +55,7 @@ class A2C(OnPolicyAlgorithm):
         self,
         policy: Union[str, Type[ActorCriticPolicy]],
         env: Union[GymEnv, str],
+        train_schedule: Callable,
         learning_rate: Union[float, Callable] = 7e-4,
         n_steps: int = 5,
         gamma: float = 0.99,
@@ -96,7 +97,7 @@ class A2C(OnPolicyAlgorithm):
             seed=seed,
             _init_setup_model=False,
         )
-
+        self.train_schedule = train_schedule
         self.normalize_advantage = normalize_advantage
 
         # Update optimizer inside the policy if we want to use RMSProp
@@ -133,6 +134,7 @@ class A2C(OnPolicyAlgorithm):
                 advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
             # Policy gradient loss
+            log_prob = log_prob[:,:].sum(dim=1)
             policy_loss = -(advantages * log_prob).mean()
 
             # Value loss using the TD(gae_lambda) target
