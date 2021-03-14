@@ -1,21 +1,20 @@
 import os
 import yaml
 import subprocess
+from collections import defaultdict
 import stable_baselines3
+import gym
 
 from stable_baselines3.envs.DefeatZerglingsAndBanelings import DZBEnv
 from stable_baselines3.envs.DefeatRoaches import DREnv
 from stable_baselines3.envs.CollectMineralAndGas import CMGEnv
-from stable_baselines3.envs.CMG_noGas_1base import NoEnv
-from stable_baselines3.envs.CMG_2Gas_1base import GasEnv
-
 from stable_baselines3.envs.CollectMineralShards import CMSEnv
 from stable_baselines3.envs.FindAndDefeatZerglings import FDZEnv
-from stable_baselines3.envs.CustomEnv import CustomEnv
-from stable_baselines3.envs.Hierarchical_env import HierarchEnv
-
 from stable_baselines3.envs.MoveToBeacon import MTBEnv
 from stable_baselines3.envs.BuildMarines import BMEnv
+from stable_baselines3.envs.Hierarchical_env import HierarchEnv
+
+from stable_baselines3.envs.CustomEnv import CustomEnv
 from stable_baselines3 import A2C
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
@@ -23,14 +22,13 @@ from stable_baselines3.common import logger
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.cmd_util import make_atari_env
 from stable_baselines3.common.vec_env import VecFrameStack
+
+
 from pysc2.env import sc2_env, run_loop
 from absl import flags
-import time
 
 FLAGS = flags.FLAGS
 FLAGS([''])
-
-
 
 
 def read_hypers():
@@ -65,6 +63,17 @@ class LoggerCallback(BaseCallback):
         """
         return True
 
+def make_schedular(shared_timestep, alternate_timestep):
+    def schedule(index):
+        if index < shared_timestep:
+            return [0, 1]
+        elif (index // alternate_timestep) % 2 == 0:
+            return [1]
+        elif (index // alternate_timestep) % 2 == 1:
+            return [0]
+        else:
+            raise RuntimeError("Invalid index: {}".format(index))
+    return schedule
 
 if __name__ == "__main__":
 
@@ -73,6 +82,8 @@ if __name__ == "__main__":
     for starcraftgame in hyperparams:
 
         gamename, hyperparam = list(starcraftgame.items())[0]
+
+        hyperparam["agent"]["train_schedule"] = make_schedular(**hyperparam["schedular"])
 
         loggcallback = LoggerCallback(
             "json",
@@ -85,9 +96,9 @@ if __name__ == "__main__":
                     verbose=1,
                     tensorboard_log="logs",
                     **hyperparam["agent"])
+        
+        hyperparam["agent"]["train_schedule"] = None
 
         model.learn(callback=loggcallback,
                     tb_log_name=gamename,
                     **hyperparam["learn"])
-
-        model.save('models/ActualNoGas_{}'.format(int(time.time())))
