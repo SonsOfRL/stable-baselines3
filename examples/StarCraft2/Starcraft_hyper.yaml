@@ -1,24 +1,28 @@
 starcraft:
-  - CustomEnv:
-      envname: CustomEnv-v0
+  - 4NetHie_MA_medium:
+      envname: 4NetHie_MA_medium-v0
       env:
-        seed: 450
-        n_envs: 2
+        seed: 234
+        n_envs: 80
       framestack:
         n_stack: 4
+      schedular:
+        shared_timestep: !!float 1e8
+        alternate_timestep: !!float 1e5
       agent:
-        seed: 1450
+        seed: 9674
         policy: 'MlpPolicy'
-        learning_rate: 0.0007
-        n_steps: 10
+        learning_rate: 0.0001
+        n_steps: 30
         gamma: 0.99
-        gae_lambda: 1
-        ent_coef: 0.01
+        gae_lambda: 0.01
+        ent_coef: 0.001
         vf_coef: 0.25
         max_grad_norm: 0.5
-        rms_prop_eps: 0.00001
-      learn:
-        total_timesteps: !!float 5e6
-        log_interval: 200
+        rms_prop_eps: 0.001
 
- 
+      learn:
+        total_timesteps: !!float 3.5e7
+        log_interval: 100
+
+  
