@@ -134,7 +134,8 @@ class A2C(OnPolicyAlgorithm):
                 advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
             # Policy gradient loss
-            log_prob = log_prob[:,:].sum(dim=1)
+            if len(log_prob.shape) > 1:
+                log_prob = log_prob[:,:].sum(dim=1)
             policy_loss = -(advantages * log_prob).mean()
 
             # Value loss using the TD(gae_lambda) target

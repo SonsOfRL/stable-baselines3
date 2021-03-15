@@ -653,7 +653,7 @@ class TreeCategoricalDistrubution(MultiCategoricalDistribution):
         """
         example: {
             0: {
-                parent: 100000,
+                parent: None,
                 childs: [1, 2, 5],
                 action_dim: 3,
             }
@@ -690,21 +690,39 @@ class TreeCategoricalDistrubution(MultiCategoricalDistribution):
 
         batchsize = actions.shape[0]
         log_probs = []
-
+        Samples_last = []
         for ij in range(batchsize):
             act = actions[ij].item()
             log_prob = []
+            samples = []
             node_ix = self.action_to_node[act]
             child_num = act - self.action_dict[node_ix]["offset"]
             while node_ix is not None:
-                node = self.action_dict[node_ix]
-                logit = self.distributions[node_ix].logits[ij]
-                log_prob.append(Categorical(logits=logit).log_prob(th.tensor(child_num).to(logit.device)))
-                child_num = node["child_num"]
-                node_ix = node["parent"]
-            log_probs.append(th.stack(log_prob))
 
-        x = th.stack(log_probs)
+                node = self.action_dict[node_ix]
+
+                logit = self.distributions[node_ix].logits[ij]
+                sample = self.sample()[ij]
+                #print(sample, "sample before itemizing")
+
+                sample = sample.item()
+                sample = th.tensor(sample).to(logit.device)
+                #print(sample, " sample")
+                prob = nn.functional.softmax(sample.float(), dim=0)
+                sample = sample + prob - prob.detach()
+                samples.append(sample)
+                #log_prob.append(Categorical(logits=logit).log_prob(th.tensor(child_num).to(logit.device)))
+                #print(log_prob, " log  Prob")
+                #child_num = node["child_num"]
+                node_ix = node["parent"]
+
+
+            #print(samples, " samples")
+            #log_probs.append(th.stack(log_prob))
+            #print(log_probs, " logProbs")
+            Samples_last.append(th.stack(samples))
+            #print(Samples_last)
+        x = th.stack(Samples_last)
         return x
 
     def sample(self) -> th.Tensor:

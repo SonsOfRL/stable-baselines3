@@ -4,6 +4,7 @@ from gym import spaces
 import logging
 import numpy as np
 from stable_baselines3.envs.base_env import SC2Env
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,8 @@ class CMSEnv(SC2Env):
     def attack_move(self, x, y, marine_number=0):
         try:
             marines = self.get_my_units_by_type(self.obs, units.Terran.Marine)
-            target = (x, y)
+            #target = (x, y)
+            target = random.choice(self.minerals)
             marine = marines[marine_number]
 
             return actions.RAW_FUNCTIONS.Attack_pt("now", marine.tag, target)

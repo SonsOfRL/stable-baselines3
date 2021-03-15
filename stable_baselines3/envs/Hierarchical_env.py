@@ -43,20 +43,32 @@ class HierarchEnv(SC2Env):
         self.action_space = TreeDiscreteDict({
             0: {
                 "parent": None,
-                "childs": [1, 2],
-                "action_dim": 2
+                "childs": [1, 2, 3],
+                "action_dim": 3
 
             },
+
             1: {
                 "parent": 0,
                 "childs": None,
-                "action_dim": 5
+                "action_dim": 17
+
             },
             2: {
                 "parent": 0,
                 "childs": None,
-                "action_dim": 12
+                "action_dim": 17
+
             },
+
+            3: {
+                "parent": 0,
+                "childs": None,
+                "action_dim": 17
+
+            }
+
+
         })
         # [0: x, 1: y, 2: hp]
         self.observation_space = spaces.Box(
@@ -109,7 +121,7 @@ class HierarchEnv(SC2Env):
         elif action == 4:
             action_mapped = self.attack_random_enemy()
         elif action == 5:
-            action_mapped = actions.RAW_FUNCTIONS.no_op()
+            action_mapped = self.all_attack_exp()
         elif action == 6:
             action_mapped = self.harvest_minerals()
         elif action == 7:
@@ -542,6 +554,26 @@ class HierarchEnv(SC2Env):
             return actions.RAW_FUNCTIONS.Attack_unit(
                 "now", marine.tag, enemy.tag)
 
+        return actions.RAW_FUNCTIONS.no_op()
+
+    def all_attack_exp(self):
+        army_tags = []
+        marines = self.get_my_units_by_type(self.obs, units.Terran.Marine)
+        marauders = self.get_enemy_units_by_type(self.obs, units.Terran.Marauder)
+        if len(marines) > 0:
+            for marine in range(len(marines)):
+                army_tags.append(marines[marine].tag)
+
+        if len(marauders) > 0:
+            for marauder in range(len(marauders)):
+                army_tags.append(marauders[marauder].tag)
+
+        if len(marauders) > 0 or len(marines) > 0:
+            attack_xy = (15, 44) if self.base_top_left else (35, 23)
+            x_offset = random.randint(-6, 6)
+            y_offset = random.randint(-6, 6)
+            return actions.RAW_FUNCTIONS.Attack_pt(
+                "now", army_tags, (attack_xy[0] + x_offset, attack_xy[1] + y_offset))
         return actions.RAW_FUNCTIONS.no_op()
 
     def close(self):

@@ -1,9 +1,9 @@
 starcraft:
   - 4NetHie_MA_medium:
-      envname: 4NetHie_MA_medium-v0
+      envname: BrandNew
       env:
         seed: 234
-        n_envs: 80
+        n_envs: 1
       framestack:
         n_stack: 4
       schedular:
