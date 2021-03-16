@@ -109,6 +109,8 @@ class CustomEnv(SC2Env):
             action_mapped = self.all_attack()
         elif action == 14:
             action_mapped = self.protect_base()
+        elif action == 15:
+            action_mapped = self.all_attack_exp()
         else:
             action_mapped = self.train_marine()
         spy = 3
@@ -499,6 +501,26 @@ class CustomEnv(SC2Env):
             return actions.RAW_FUNCTIONS.Attack_unit(
                 "now", marine.tag, enemy.tag)
 
+        return actions.RAW_FUNCTIONS.no_op()
+
+    def all_attack_exp(self):
+        army_tags = []
+        marines = self.get_my_units_by_type(self.obs, units.Terran.Marine)
+        marauders = self.get_enemy_units_by_type(self.obs, units.Terran.Marauder)
+        if len(marines) > 0:
+            for marine in range(len(marines)):
+                army_tags.append(marines[marine].tag)
+
+        if len(marauders) > 0:
+            for marauder in range(len(marauders)):
+                army_tags.append(marauders[marauder].tag)
+
+        if len(marauders) > 0 or len(marines) > 0:
+            attack_xy = (15, 44) if self.base_top_left else (35, 23)
+            x_offset = random.randint(-6, 6)
+            y_offset = random.randint(-6, 6)
+            return actions.RAW_FUNCTIONS.Attack_pt(
+                "now", army_tags, (attack_xy[0] + x_offset, attack_xy[1] + y_offset))
         return actions.RAW_FUNCTIONS.no_op()
 
 
