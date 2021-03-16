@@ -176,7 +176,8 @@ class DiagGaussianDistribution(Distribution):
     def mode(self) -> th.Tensor:
         return self.distribution.mean
 
-    def actions_from_params(self, mean_actions: th.Tensor, log_std: th.Tensor, deterministic: bool = False) -> th.Tensor:
+    def actions_from_params(self, mean_actions: th.Tensor, log_std: th.Tensor,
+                            deterministic: bool = False) -> th.Tensor:
         # Update the proba distribution
         self.proba_distribution(mean_actions, log_std)
         return self.get_actions(deterministic=deterministic)
@@ -305,16 +306,34 @@ class HierarchicalLinearLayer(th.nn.Module):
 
     def __init__(self, insize, outsize, levels):
         super().__init__()
-        outsizes = [levels[ix+1] for ix in range(len(levels) - 1)] + [outsize]
+        print(insize, "insize")
+        print(outsize, "outsize")
+        print(levels, "levels")
+        outsizes = [levels[ix + 1] for ix in range(len(levels) - 1)] + [outsize]
+        print(outsizes, "outsizes")
+        # self.linears = nn.ModuleList([nn.Linear(insize, outsizes) for i in range(len(levels[0])+len(levels[1])+len(levels[2]))])
+
+        # print(self.linears)
+        # self.layers = self.linears
+
         self.layers = [
             [th.nn.Linear(insize, out) for i in range(n_layer)]
             for out, n_layer in zip(outsizes, levels)
         ]
+        print(self.layers)
+
+        self.modular1 = nn.ModuleList([th.nn.Linear(insize, outsizes[0])])
+        self.modular2 = nn.ModuleList([th.nn.Linear(insize, outsizes[1]) for i in range(levels[1])])
+        self.modular3 = nn.ModuleList([th.nn.Linear(insize, outsizes[2]) for i in range(levels[2])])
+        self.modular = [self.modular1, self.modular2, self.modular3]
+        print(self.modular, "layers")
+        self.layers = self.modular
 
     def forward(self, input):
+        spy = 3
         return [
-            [layer(input) for layer in layers]
-            for layers in self.layers
+            [layer(input) for layer in modules]
+            for modules in self.layers
         ]
 
 
@@ -342,7 +361,7 @@ class HierarchicalCategoricalDistribution(CategoricalDistribution):
         :return: (HierarchicalLinearLayer)
         """
         action_layer = HierarchicalLinearLayer(latent_dim, self.action_dim,
-            self.levels)
+                                               self.levels)
         return action_layer
 
     def proba_distribution(self, action_logits: th.Tensor) -> "CategoricalDistribution":
@@ -396,7 +415,8 @@ class MultiCategoricalDistribution(Distribution):
         return action_logits
 
     def proba_distribution(self, action_logits: th.Tensor) -> "MultiCategoricalDistribution":
-        self.distributions = [Categorical(logits=split) for split in th.split(action_logits, tuple(self.action_dims), dim=1)]
+        self.distributions = [Categorical(logits=split) for split in
+                              th.split(action_logits, tuple(self.action_dims), dim=1)]
         return self
 
     def log_prob(self, actions: th.Tensor) -> th.Tensor:
@@ -423,6 +443,7 @@ class MultiCategoricalDistribution(Distribution):
         actions = self.actions_from_params(action_logits)
         log_prob = self.log_prob(actions)
         return actions, log_prob
+
 
 class BernoulliDistribution(Distribution):
     """
@@ -498,13 +519,13 @@ class StateDependentNoiseDistribution(Distribution):
     """
 
     def __init__(
-        self,
-        action_dim: int,
-        full_std: bool = True,
-        use_expln: bool = False,
-        squash_output: bool = False,
-        learn_features: bool = False,
-        epsilon: float = 1e-6,
+            self,
+            action_dim: int,
+            full_std: bool = True,
+            use_expln: bool = False,
+            squash_output: bool = False,
+            learn_features: bool = False,
+            epsilon: float = 1e-6,
     ):
         super(StateDependentNoiseDistribution, self).__init__()
         self.distribution = None
@@ -566,7 +587,7 @@ class StateDependentNoiseDistribution(Distribution):
         self.exploration_matrices = self.weights_dist.rsample((batch_size,))
 
     def proba_distribution_net(
-        self, latent_dim: int, log_std_init: float = -2.0, latent_sde_dim: Optional[int] = None
+            self, latent_dim: int, log_std_init: float = -2.0, latent_sde_dim: Optional[int] = None
     ) -> Tuple[nn.Module, nn.Parameter]:
         """
         Create the layers and parameter that represent the distribution:
@@ -593,7 +614,7 @@ class StateDependentNoiseDistribution(Distribution):
         return mean_actions_net, log_std
 
     def proba_distribution(
-        self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor
+            self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor
     ) -> "StateDependentNoiseDistribution":
         """
         Create the distribution given its parameters (mean, std)
@@ -657,14 +678,14 @@ class StateDependentNoiseDistribution(Distribution):
         return noise.squeeze(1)
 
     def actions_from_params(
-        self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor, deterministic: bool = False
+            self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor, deterministic: bool = False
     ) -> th.Tensor:
         # Update the proba distribution
         self.proba_distribution(mean_actions, log_std, latent_sde)
         return self.get_actions(deterministic=deterministic)
 
     def log_prob_from_params(
-        self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor
+            self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor
     ) -> Tuple[th.Tensor, th.Tensor]:
         actions = self.actions_from_params(mean_actions, log_std, latent_sde)
         log_prob = self.log_prob(actions)
@@ -714,8 +735,8 @@ class TanhBijector(object):
         # Squash correction (from original SAC implementation)
         return th.log(1.0 - th.tanh(x) ** 2 + self.epsilon)
 
-class TreeCategoricalDistrubution(MultiCategoricalDistribution):
 
+class TreeCategoricalDistrubution(MultiCategoricalDistribution):
 
     def __init__(self, action_dict: Dict[int, Dict[str, Union[List[int], int]]]):
         """
@@ -747,7 +768,8 @@ class TreeCategoricalDistrubution(MultiCategoricalDistribution):
                     queue.appendleft(child_ix)
             else:
                 node["offset"] = offset
-                self.action_to_node = {**self.action_to_node, **{ij + offset: node_ix for ij in range(node["action_dim"])}}
+                self.action_to_node = {**self.action_to_node,
+                                       **{ij + offset: node_ix for ij in range(node["action_dim"])}}
                 offset += node["action_dim"]
 
         action_dims = [node["action_dim"] for node in action_dict.values()]
@@ -766,30 +788,28 @@ class TreeCategoricalDistrubution(MultiCategoricalDistribution):
             node_ix = self.action_to_node[act]
             child_num = act - self.action_dict[node_ix]["offset"]
             while node_ix is not None:
-
                 node = self.action_dict[node_ix]
 
                 logit = self.distributions[node_ix].logits[ij]
                 sample = self.sample()[ij]
-                #print(sample, "sample before itemizing")
+                # print(sample, "sample before itemizing")
 
                 sample = sample.item()
                 sample = th.tensor(sample).to(logit.device)
-                #print(sample, " sample")
+                # print(sample, " sample")
                 prob = nn.functional.softmax(sample.float(), dim=0)
                 sample = sample + prob - prob.detach()
                 samples.append(sample)
-                #log_prob.append(Categorical(logits=logit).log_prob(th.tensor(child_num).to(logit.device)))
-                #print(log_prob, " log  Prob")
-                #child_num = node["child_num"]
+                # log_prob.append(Categorical(logits=logit).log_prob(th.tensor(child_num).to(logit.device)))
+                # print(log_prob, " log  Prob")
+                # child_num = node["child_num"]
                 node_ix = node["parent"]
 
-
-            #print(samples, " samples")
-            #log_probs.append(th.stack(log_prob))
-            #print(log_probs, " logProbs")
+            # print(samples, " samples")
+            # log_probs.append(th.stack(log_prob))
+            # print(log_probs, " logProbs")
             Samples_last.append(th.stack(samples))
-            #print(Samples_last)
+            # print(Samples_last)
         x = th.stack(Samples_last)
         return x
 
@@ -817,9 +837,8 @@ class TreeCategoricalDistrubution(MultiCategoricalDistribution):
         return th.stack(action_sample_list).long()
 
 
-
 def make_proba_distribution(
-    action_space: gym.spaces.Space, use_sde: bool = False, dist_kwargs: Optional[Dict[str, Any]] = None
+        action_space: gym.spaces.Space, use_sde: bool = False, dist_kwargs: Optional[Dict[str, Any]] = None
 ) -> Distribution:
     """
     Return an instance of Distribution for the correct type of action space
