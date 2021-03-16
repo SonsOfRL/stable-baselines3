@@ -8,6 +8,7 @@ import gym
 import torch as th
 from gym import spaces
 from stable_baselines3.common.custom_space import TreeDiscreteDict
+from stable_baselines3.common.custom_space_reparam import ReparamHieDict
 from torch import nn as nn
 from torch.distributions import Bernoulli, Categorical, Normal
 
@@ -300,6 +301,74 @@ class CategoricalDistribution(Distribution):
         return actions, log_prob
 
 
+class HierarchicalLinearLayer(th.nn.Module):
+
+    def __init__(self, insize, outsize, levels):
+        super().__init__()
+        outsizes = [levels[ix+1] for ix in range(len(levels) - 1)] + [outsize]
+        self.layers = [
+            [th.nn.Linear(insize, out) for i in range(n_layer)]
+            for out, n_layer in zip(outsizes, levels)
+        ]
+
+    def forward(self, input):
+        return [
+            [layer(input) for layer in layers]
+            for layers in self.layers
+        ]
+
+
+class HierarchicalCategoricalDistribution(CategoricalDistribution):
+
+    def __init__(self, action_dict: Dict[str, Union[List[int], int]]):
+        """
+        example: {
+            levels: [1, 5, 5],
+            action_dim: 3,
+        }
+        """
+        super().__init__(action_dict["action_dim"])
+        self.levels = action_dict["levels"]
+        assert self.levels[0] == 1, ""
+
+    def proba_distribution_net(self, latent_dim: int) -> nn.Module:
+        """
+        Create the layer that represents the distribution:
+        it will be the logits of the Categorical distribution.
+        You can then get probabilities using a softmax.
+
+        :param latent_dim: (int) Dimension of the last layer
+            of the policy network (before the action layer)
+        :return: (HierarchicalLinearLayer)
+        """
+        action_layer = HierarchicalLinearLayer(latent_dim, self.action_dim,
+            self.levels)
+        return action_layer
+
+    def proba_distribution(self, action_logits: th.Tensor) -> "CategoricalDistribution":
+        output = action_logits[0][0]
+        for logits in action_logits[1:]:
+            out_dist = Categorical(logits=output)
+            # Categorical Reparameterization Trick
+            s = out_dist.sample()
+            print(s)
+
+            one_hot = th.nn.functional.one_hot(s, 5)
+            print(one_hot)
+            print(out_dist.probs)
+            print(s, "samples")
+            sample = one_hot + out_dist.probs - out_dist.probs.detach()
+            # Soft-Attention
+            # sample = out_dist.probs
+            # Deterministic
+            print(output, "output")
+            # sample = out_dist.probs.argmax(1)
+            output = th.einsum("blo,bl->bo", th.stack(logits, dim=1), sample)
+
+        self.distribution = Categorical(logits=output)
+        return self
+
+
 class MultiCategoricalDistribution(Distribution):
     """
     MultiCategorical distribution for multi discrete actions.
@@ -354,7 +423,6 @@ class MultiCategoricalDistribution(Distribution):
         actions = self.actions_from_params(action_logits)
         log_prob = self.log_prob(actions)
         return actions, log_prob
-
 
 class BernoulliDistribution(Distribution):
     """
@@ -768,6 +836,9 @@ def make_proba_distribution(
         assert len(action_space.shape) == 1, "Error: the action space must be a vector"
         cls = StateDependentNoiseDistribution if use_sde else DiagGaussianDistribution
         return cls(get_action_dim(action_space), **dist_kwargs)
+    elif isinstance(action_space, ReparamHieDict):
+        print("REPARAM Hie Action Space initialized")
+        return HierarchicalCategoricalDistribution(action_space.action_dict)
     elif isinstance(action_space, TreeDiscreteDict):
         print("Tree Discrete Action Space initialized")
         return TreeCategoricalDistrubution(action_space.action_dict)

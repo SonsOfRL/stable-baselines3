@@ -5,6 +5,7 @@ import logging
 import numpy as np
 from stable_baselines3.envs.base_env import SC2Env
 from stable_baselines3.common.custom_space import TreeDiscreteDict
+from stable_baselines3.common.custom_space_reparam import ReparamHieDict
 import random
 
 logger = logging.getLogger(__name__)
@@ -40,34 +41,9 @@ class HierarchEnv(SC2Env):
 
         # 0 no operation
         #
-        self.action_space = TreeDiscreteDict({
-            0: {
-                "parent": None,
-                "childs": [1, 2, 3],
-                "action_dim": 3
-
-            },
-
-            1: {
-                "parent": 0,
-                "childs": None,
-                "action_dim": 17
-
-            },
-            2: {
-                "parent": 0,
-                "childs": None,
-                "action_dim": 17
-
-            },
-
-            3: {
-                "parent": 0,
-                "childs": None,
-                "action_dim": 17
-
-            }
-
+        self.action_space = ReparamHieDict({
+            "levels": [1, 5, 5],
+            "action_dim": 17
 
         })
         # [0: x, 1: y, 2: hp]
@@ -208,7 +184,6 @@ class HierarchEnv(SC2Env):
             obs, units.Terran.Barracks)
         enemy_marines = self.get_enemy_units_by_type(obs, units.Terran.Marine)
         enemy_marauders = self.get_enemy_units_by_type(obs, units.Terran.Marauder)
-
 
         obs = np.zeros((23, 1), dtype=np.int64)
 
