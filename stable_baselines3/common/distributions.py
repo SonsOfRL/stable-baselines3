@@ -321,19 +321,22 @@ class HierarchicalLinearLayer(th.nn.Module):
             for out, n_layer in zip(outsizes, levels)
         ]
         print(self.layers)
-
+        self.modular = []
+        for i in range(len(outsizes)):
+            module = nn.ModuleList([th.nn.Linear(insize, outsizes[i]) for k in range(levels[i])])
+            self.modular.append(module)
+        """
         self.modular1 = nn.ModuleList([th.nn.Linear(insize, outsizes[0])])
         self.modular2 = nn.ModuleList([th.nn.Linear(insize, outsizes[1]) for i in range(levels[1])])
         self.modular3 = nn.ModuleList([th.nn.Linear(insize, outsizes[2]) for i in range(levels[2])])
-        self.modular = [self.modular1, self.modular2, self.modular3]
+        self.modular = [self.modular1, self.modular2, self.modular3] """
         print(self.modular, "layers")
-        self.layers = self.modular
 
     def forward(self, input):
         spy = 3
         return [
             [layer(input) for layer in modules]
-            for modules in self.layers
+            for modules in self.modular
         ]
 
 
